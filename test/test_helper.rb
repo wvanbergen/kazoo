@@ -38,6 +38,12 @@ module MockCluster
     topic_4.partitions[2].stubs(:isr).returns([cluster.brokers[1], cluster.brokers[3]])
     topic_4.partitions[3].stubs(:isr).returns([cluster.brokers[3], cluster.brokers[2]])
 
+    topic_1.partitions[0].stubs(:leader).returns(cluster.brokers[1])
+    topic_4.partitions[0].stubs(:leader).returns(cluster.brokers[2])
+    topic_4.partitions[1].stubs(:leader).returns(cluster.brokers[2])
+    topic_4.partitions[2].stubs(:leader).returns(cluster.brokers[1])
+    topic_4.partitions[3].stubs(:leader).returns(cluster.brokers[3])
+
     return cluster
   end
 end
