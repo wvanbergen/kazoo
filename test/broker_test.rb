@@ -28,5 +28,18 @@ class BrokerTest < Minitest::Test
     assert_equal 'kafka03.example.com', broker.host
     assert_equal 9092, broker.port
     assert_equal 9999, broker.jmx_port
+    assert_equal "kafka03.example.com:9092", broker.addr
+  end
+
+  def test_replicated_partitions
+    assert_equal 3, @cluster.brokers[1].replicated_partitions.length
+    assert_equal 4, @cluster.brokers[2].replicated_partitions.length
+    assert_equal 3, @cluster.brokers[3].replicated_partitions.length
+  end
+
+  def test_led_partitions
+    assert_equal 2, @cluster.brokers[1].led_partitions.length
+    assert_equal 2, @cluster.brokers[2].led_partitions.length
+    assert_equal 1, @cluster.brokers[3].led_partitions.length
   end
 end

@@ -11,7 +11,7 @@ module Kazoo
     def self.from_json(cluster, name, json)
       topic = new(cluster, name)
       topic.partitions = json.fetch('partitions').map do |(id, replicas)|
-        topic.partition(id, replicas: replicas.map { |b| cluster.brokers[b] })
+        topic.partition(id.to_i, replicas: replicas.map { |b| cluster.brokers[b] })
       end.sort_by(&:id)
 
       return topic
