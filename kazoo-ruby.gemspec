@@ -4,7 +4,7 @@ $LOAD_PATH.unshift(lib) unless $LOAD_PATH.include?(lib)
 require 'kazoo/version'
 
 Gem::Specification.new do |spec|
-  spec.name          = "kazoo"
+  spec.name          = "kazoo-ruby"
   spec.version       = Kazoo::VERSION
   spec.authors       = ["Willem van Bergen"]
   spec.email         = ["willem@vanbergen.org"]
