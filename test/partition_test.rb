@@ -22,4 +22,19 @@ class PartitionTest < Minitest::Test
     assert_equal 1, partition.leader.id
     assert_equal [3,2,1], partition.isr.map(&:id)
   end
+
+  def test_inspect
+    assert_equal "#<Kazoo::Partition test.1/0>", @cluster.topics['test.1'].partition(0).inspect
+  end
+
+  def test_equality
+    topic = @cluster.topics['test.1']
+    p1 = topic.partition(0)
+    p2 = Kazoo::Partition.new(topic, 0)
+
+    assert_equal p1, p2
+    assert p1 != Kazoo::Partition.new(topic, 1)
+    assert p1 != Kazoo::Partition.new(@cluster.topics['test.4'], 0)
+    assert_equal p1.hash, p2.hash
+  end
 end

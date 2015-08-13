@@ -42,4 +42,16 @@ class BrokerTest < Minitest::Test
     assert_equal 2, @cluster.brokers[2].led_partitions.length
     assert_equal 1, @cluster.brokers[3].led_partitions.length
   end
+
+  def test_inspect
+    assert_equal "#<Kazoo::Broker id=1 addr=example.com:9091>", @cluster.brokers[1].inspect
+  end
+
+  def test_equality
+    b1 = @cluster.brokers[1]
+    b2 = Kazoo::Broker.new(@cluster, 1, 'example.com', 9091)
+
+    assert_equal b1, b2
+    assert_equal b1.hash, b2.hash
+  end
 end

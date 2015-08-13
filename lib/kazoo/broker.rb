@@ -61,6 +61,10 @@ module Kazoo
       [self.cluster, self.id].hash
     end
 
+    def inspect
+      "#<Kazoo::Broker id=#{id} addr=#{addr}>"
+    end
+
     def self.from_json(cluster, id, json)
       new(cluster, id.to_i, json.fetch('host'), json.fetch('port'), jmx_port: json.fetch('jmx_port', nil))
     end
