@@ -28,5 +28,19 @@ module Kazoo
     def under_replicated?
       partitions.any?(:under_replicated?)
     end
+
+    def inspect
+      "#<Kazoo::Topic #{name}>"
+    end
+
+    def eql?(other)
+      other.kind_of?(Kazoo::Topic) && cluster == other.cluster && name == other.name
+    end
+
+    alias_method :==, :eql?
+
+    def hash
+      [cluster, name].hash
+    end
   end
 end
