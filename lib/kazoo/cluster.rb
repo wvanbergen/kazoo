@@ -5,7 +5,7 @@ module Kazoo
 
     def initialize(zookeeper, chroot: "")
       @zookeeper, @chroot = zookeeper, chroot
-      @zk_mutex, @brokers_mutex, @topics_mutex = Mutex.new, Mutex.new, Mutex.new
+      @zk_mutex, @brokers_mutex, @topics_mutex, @consumergroups_mutex = Mutex.new, Mutex.new, Mutex.new, Mutex.new
     end
 
     def zk
@@ -30,6 +30,13 @@ module Kazoo
           threads.list.each(&:join)
           result
         end
+      end
+    end
+
+    def consumergroups
+      @consumergroups ||= begin
+        consumers = zk.get_children(path: node_with_chroot("/consumers"))
+        consumers.fetch(:children).map { |name| Kazoo::Consumergroup.new(self, name) }
       end
     end
 
@@ -66,6 +73,10 @@ module Kazoo
 
     def node_with_chroot(path)
       "#{@chroot}#{path}"
+    end
+
+    def close
+      zk.close
     end
   end
 end
