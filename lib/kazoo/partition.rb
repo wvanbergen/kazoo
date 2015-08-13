@@ -36,7 +36,7 @@ module Kazoo
     protected
 
     def refresh_state
-      state_json = cluster.zk.get(path: cluster.node_with_chroot("/brokers/topics/#{topic.name}/partitions/#{id}/state"))
+      state_json = cluster.zk.get(path: "/brokers/topics/#{topic.name}/partitions/#{id}/state")
       set_state(JSON.parse(state_json.fetch(:data)))
     end
 
