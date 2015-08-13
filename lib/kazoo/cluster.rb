@@ -40,6 +40,13 @@ module Kazoo
       end
     end
 
+    def consumergroups
+      @consumergroups ||= begin
+        consumers = zk.get_children(path: "/consumers")
+        consumers.fetch(:children).map { |name| Kazoo::Consumergroup.new(self, name) }
+      end
+    end
+
     def topics
       @topics_mutex.synchronize do
         @topics ||= begin
