@@ -33,10 +33,24 @@ module Kazoo
       isr.length < replication_factor
     end
 
+    def inspect
+      "#<Kazoo::Partition #{topic.name}/#{id}>"
+    end
+
+    def eql?(other)
+      other.kind_of?(Kazoo::Partition) && topic == other.topic && id == other.id
+    end
+
+    alias_method :==, :eql?
+
+    def hash
+      [topic, id].hash
+    end
+
     protected
 
     def refresh_state
-      state_json = cluster.zk.get(path: cluster.node_with_chroot("/brokers/topics/#{topic.name}/partitions/#{id}/state"))
+      state_json = cluster.zk.get(path: "/brokers/topics/#{topic.name}/partitions/#{id}/state")
       set_state(JSON.parse(state_json.fetch(:data)))
     end
 
