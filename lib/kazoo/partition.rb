@@ -51,6 +51,8 @@ module Kazoo
 
     def refresh_state
       state_json = cluster.zk.get(path: "/brokers/topics/#{topic.name}/partitions/#{id}/state")
+      raise Kazoo::Error, "Failed to get partition state. Error code: #{state_json.fetch(:rc)}" unless state_json.fetch(:rc) == Zookeeper::Constants::ZOK
+
       set_state(JSON.parse(state_json.fetch(:data)))
     end
 
