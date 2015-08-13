@@ -37,4 +37,17 @@ class TopicTest < Minitest::Test
     assert @cluster.topics['test.1'].partitions[0].under_replicated?
     assert @cluster.topics['test.1'].under_replicated?
   end
+
+  def test_inspect
+    assert_equal "#<Kazoo::Topic test.1>", @cluster.topics['test.1'].inspect
+  end
+
+  def test_equality
+    t1 = @cluster.topics['test.1']
+    t2 = Kazoo::Topic.new(@cluster, 'test.1')
+
+    assert_equal t1, t2
+    assert t1 != Kazoo::Topic.new(@cluster, 'test.2')
+    assert_equal t1.hash, t2.hash
+  end
 end
