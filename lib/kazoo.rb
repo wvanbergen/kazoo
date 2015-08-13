@@ -3,6 +3,9 @@ require 'json'
 require 'thread'
 
 module Kazoo
+  Error = Class.new(StandardError)
+
+  NoClusterRegistered = Class.new(Kazoo::Error)
 end
 
 require 'kazoo/cluster'
