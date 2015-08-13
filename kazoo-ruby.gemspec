@@ -8,8 +8,8 @@ Gem::Specification.new do |spec|
   spec.version       = Kazoo::VERSION
   spec.authors       = ["Willem van Bergen"]
   spec.email         = ["willem@vanbergen.org"]
-  spec.summary       = %q{Library to access Kafka metadata in Zookeeper}
-  spec.description   = %q{Library to access Kafka metadata in Zookeeper}
+  spec.summary       = %q{Library to access and manipulate Kafka metadata in Zookeeper}
+  spec.description   = %q{Library to access and manipulate Kafka metadata in Zookeeper}
   spec.homepage      = "https://github.com/wvanbergen/kazoo"
   spec.license       = "MIT"
 

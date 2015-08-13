@@ -56,7 +56,7 @@ module Kazoo
 
     def validate_class_options!
       if options[:zookeeper].nil? || options[:zookeeper] == ''
-        raise Thor::InvocationError, "Please supply --zookeeper argument, or set the ZOOKEEPER_PEERS environment variable"
+        raise Thor::InvocationError, "Please supply --zookeeper argument, or set the ZOOKEEPER environment variable"
       end
     end
 
