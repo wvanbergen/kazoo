@@ -82,11 +82,35 @@ module Kazoo
     end
 
     def destroy
-      raise Kazoo::Error, "The topic #{name} does not exist!" unless exist?
-      result = cluster.zk.create(path: "/admin/delete_topics/#{name}")
+      t = Thread.current
+      cb = Zookeeper::Callbacks::WatcherCallback.create do |event|
+        case event.type
+        when Zookeeper::Constants::ZOO_DELETED_EVENT
+          t.run if t.status == 'sleep'
+        else
+          raise Kazoo::Error, "Unexpected Zookeeper event: #{event.type}"
+        end
+      end
 
-      if result.fetch(:rc) != Zookeeper::Constants::ZOK
-        raise Kazoo::Error, "Failed to create topic #{name}. Error code: #{result.fetch(:rc)}"
+      result = cluster.zk.stat(path: "/brokers/topics/#{name}", watcher: cb)
+      case result.fetch(:rc)
+       when Zookeeper::Constants::ZOK
+        # continue
+      when Zookeeper::Constants::ZNONODE
+        raise Kazoo::Error, "Topic #{name} does not exist!"
+      else
+        raise Kazoo::Error, "Failed to monitor topic"
+      end
+
+
+      result = cluster.zk.create(path: "/admin/delete_topics/#{name}")
+      case result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        Thread.stop unless cb.completed?
+      when Zookeeper::Constants::ZNODEEXISTS
+        raise Kazoo::Error, "The topic #{name} is already marked for deletion!"
+      else
+        raise Kazoo::Error, "Failed to delete topic #{name}. Error code: #{result.fetch(:rc)}"
       end
     end
 
