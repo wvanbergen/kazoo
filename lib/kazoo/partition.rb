@@ -60,6 +60,19 @@ module Kazoo
       [topic, id].hash
     end
 
+    def wait_for_leader
+      current_leader = nil
+      while current_leader.nil?
+        current_leader = begin
+          leader
+        rescue Kazoo::Error
+          nil
+        end
+
+        sleep(0.1) if current_leader.nil?
+      end
+    end
+
     protected
 
     def refresh_state

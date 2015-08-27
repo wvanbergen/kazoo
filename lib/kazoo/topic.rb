@@ -46,7 +46,7 @@ module Kazoo
       [cluster, name].hash
     end
 
-    def exist?
+    def exists?
       stat = cluster.zk.stat(path: "/brokers/topics/#{name}")
       stat.fetch(:stat).exists?
     end
@@ -68,7 +68,7 @@ module Kazoo
     end
 
     def create
-      raise Kazoo::Error, "The topic #{name} already exists!" if exist?
+      raise Kazoo::Error, "The topic #{name} already exists!" if exists?
       validate
 
       result = cluster.zk.create(
@@ -79,6 +79,8 @@ module Kazoo
       if result.fetch(:rc) != Zookeeper::Constants::ZOK
         raise Kazoo::Error, "Failed to create topic #{name}. Error code: #{result.fetch(:rc)}"
       end
+
+      wait_for_partitions
     end
 
     def destroy
@@ -122,6 +124,17 @@ module Kazoo
     end
 
     protected
+
+    def wait_for_partitions
+      threads = []
+      partitions.each do |partition|
+        threads << Thread.new do
+          Thread.abort_on_exception = true
+          partition.wait_for_leader
+        end
+      end
+      threads.each(&:join)
+    end
 
     def sequentially_assign_partitions(partition_count, replication_factor, brokers: nil)
       brokers = cluster.brokers.values if brokers.nil?
