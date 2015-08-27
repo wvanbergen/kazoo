@@ -70,6 +70,13 @@ module Kazoo
       end
     end
 
+    def create_topic(name, partitions: nil, replication_factor: nil)
+      raise ArgumentError, "partitions must be a positive integer" if Integer(partitions) <= 0
+      raise ArgumentError, "replication_factor must be a positive integer" if Integer(replication_factor) <= 0
+
+      Kazoo::Topic.create(self, name, partitions: Integer(partitions), replication_factor: Integer(replication_factor))
+    end
+
     def partitions
       topics.values.flat_map(&:partitions)
     end

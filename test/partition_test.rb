@@ -37,4 +37,10 @@ class PartitionTest < Minitest::Test
     assert p1 != Kazoo::Partition.new(@cluster.topics['test.4'], 0)
     assert_equal p1.hash, p2.hash
   end
+
+  def test_validate
+    partition = Kazoo::Partition.new(@cluster.topics['test.1'], 1, replicas: [@cluster.brokers[1], @cluster.brokers[1]])
+    refute partition.valid?
+    assert_raises(Kazoo::ValidationError) { partition.validate }
+  end
 end

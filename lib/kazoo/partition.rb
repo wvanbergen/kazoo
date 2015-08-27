@@ -33,6 +33,19 @@ module Kazoo
       isr.length < replication_factor
     end
 
+    def validate
+      raise Kazoo::ValidationError, "No replicas defined for #{topic.name}/#{id}" if replicas.length == 0
+      raise Kazoo::ValidationError, "The replicas of #{topic.name}/#{id} should be assigned to different brokers" if replicas.length > replicas.uniq.length
+
+      true
+    end
+
+    def valid?
+      validate
+    rescue Kazoo::ValidationError
+      false
+    end
+
     def inspect
       "#<Kazoo::Partition #{topic.name}/#{id}>"
     end

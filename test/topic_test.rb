@@ -50,4 +50,45 @@ class TopicTest < Minitest::Test
     assert t1 != Kazoo::Topic.new(@cluster, 'test.2')
     assert_equal t1.hash, t2.hash
   end
+
+  def test_validate
+    t = Kazoo::Topic.new(@cluster, "normal")
+    t.partitions = [t.partition(0, replicas: [@cluster.brokers[1]])]
+    assert t.valid?
+
+    t = Kazoo::Topic.new(@cluster, "invalid/character")
+    t.partitions = [t.partition(0, replicas: [@cluster.brokers[1]])]
+    refute t.valid?
+
+    t = Kazoo::Topic.new(@cluster, "..")
+    t.partitions = [t.partition(0, replicas: [@cluster.brokers[1]])]
+    refute t.valid?
+
+    t = Kazoo::Topic.new(@cluster, "l#{'o' * 253}ng")
+    t.partitions = [t.partition(0, replicas: [@cluster.brokers[1]])]
+    refute t.valid?
+
+    t = Kazoo::Topic.new(@cluster, "normal")
+    t.partitions = [t.partition(0, replicas: [])]
+    refute t.valid?
+  end
+
+  def test_sequentially_assign_partitions
+    topic = Kazoo::Topic.new(@cluster, 'test.new')
+
+    assert_raises(ArgumentError) { topic.send(:sequentially_assign_partitions, 4, 100) }
+
+    topic.send(:sequentially_assign_partitions, 4, 3)
+
+    assert_equal 4, topic.partitions.length
+    assert_equal 3, topic.replication_factor
+    assert topic.partitions.all? { |p| p.replicas.length == 3 }
+    assert topic.valid?
+  end
+
+  def test_partitions_as_json
+    assignment = @cluster.topics['test.1'].send(:partitions_as_json)
+    assert_equal 1, assignment.length
+    assert_equal [1,2], assignment[0]
+  end
 end
