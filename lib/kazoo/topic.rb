@@ -42,5 +42,39 @@ module Kazoo
     def hash
       [cluster, name].hash
     end
+
+    def exist?
+      stat = cluster.zk.stat(path: "/brokers/topics/#{name}")
+      stat.fetch(:stat).exists?
+    end
+
+    def create
+      result = cluster.zk.create(
+        path: "/brokers/topics/#{name}",
+        data: JSON.dump(version: 1, partitions: partition_assignment)
+      )
+
+      if result.fetch(:rc) != Zookeeper::Constants::ZOK
+        raise Kazoo::Error, "Failed to create topic #{name}. Error code: #{result.fetch(:rc)}"
+      end
+    end
+
+    def destroy
+      raise Kazoo::Error, "The topic #{name} does not exist!" unless exist?
+      result = cluster.zk.create(path: "/admin/delete_topics/#{name}")
+
+      if result.fetch(:rc) != Zookeeper::Constants::ZOK
+        raise Kazoo::Error, "Failed to create topic #{name}. Error code: #{result.fetch(:rc)}"
+      end
+    end
+
+    private
+
+    def partition_assignment
+      partitions.inject({}) do |hash, partition|
+        hash[partition.id] = partition.replicas.map(&:id)
+        hash
+      end
+    end
   end
 end

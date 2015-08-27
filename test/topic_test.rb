@@ -50,4 +50,10 @@ class TopicTest < Minitest::Test
     assert t1 != Kazoo::Topic.new(@cluster, 'test.2')
     assert_equal t1.hash, t2.hash
   end
+
+  def test_partition_assignment
+    assignment = @cluster.topics['test.1'].send(:partition_assignment)
+    assert_equal 1, assignment.length
+    assert_equal [1,2], assignment[0]
+  end
 end

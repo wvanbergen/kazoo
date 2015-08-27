@@ -3,7 +3,7 @@ require 'thor'
 
 module Kazoo
   class CLI < Thor
-    class_option :zookeeper, :type => :string, :default => ENV['ZOOKEEPER']
+    class_option :zookeeper, type: :string, default: ENV['ZOOKEEPER']
 
     desc "cluster", "Describes the Kafka cluster as registered in Zookeeper"
     def cluster
@@ -23,7 +23,25 @@ module Kazoo
       end
     end
 
-    option :topic, :type => :string
+    desc "create_topic", "Creates a new topic"
+    option :name, type: :string, required: true
+    option :partitions, type: :numeric, required: true
+    option :replication_factor, type: :numeric, required: true
+    def create_topic
+      validate_class_options!
+
+      kafka_cluster.create_topic(options[:name], partitions: options[:partitions], replication_factor: options[:replication_factor])
+    end
+
+    desc "delete_topic", "Removes a topic"
+    option :name, type: :string, required: true
+    def delete_topic
+      validate_class_options!
+
+      kafka_cluster.topics.fetch(options[:name]).destroy
+    end
+
+    option :topic, type: :string
     desc "partitions", "Lists partitions"
     def partitions
       validate_class_options!
@@ -39,7 +57,7 @@ module Kazoo
       end
     end
 
-    option :replicas, :type => :numeric, :default => 1
+    option :replicas, type: :numeric, default: 1
     desc "critical <broker>", "Determine whether a broker is critical"
     def critical(broker_name)
       validate_class_options!

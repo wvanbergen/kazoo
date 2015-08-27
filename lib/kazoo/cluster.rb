@@ -70,6 +70,26 @@ module Kazoo
       end
     end
 
+    def create_topic(name, partitions: nil, replication_factor: nil)
+      raise ArgumentError, "partitions must be set to a positive integer" if partitions.nil?
+      raise ArgumentError, "replication_factor must be set to a positive integer" if replication_factor.nil?
+
+      brokers = self.brokers.values
+      partition_assignment = {}
+      partitions.times do |partition|
+        partition_assignment[partition.to_s] = []
+        replication_factor.times do |replica|
+          index = (partition + replica) % brokers.length
+          partition_assignment[partition.to_s] << brokers[index].id
+        end
+      end
+
+      json = { "version" => 1, "partitions" => partition_assignment}
+      topic = Kazoo::Topic.from_json(self, name, json)
+      topic.create
+      topic
+    end
+
     def partitions
       topics.values.flat_map(&:partitions)
     end
