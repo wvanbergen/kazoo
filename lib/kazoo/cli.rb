@@ -70,6 +70,53 @@ module Kazoo
     end
 
 
+    desc "consumergroups", "Lists the consumergroups registered for this Kafka cluster"
+    def consumergroups
+      validate_class_options!
+
+      kafka_cluster.consumergroups.each do |group|
+        instances = group.instances
+        if instances.length == 0
+          puts "- #{group.name}: inactive"
+        else
+          puts "- #{group.name}: #{instances.length} running instances"
+        end
+      end
+    end
+
+    desc "consumergroup", "Prints information about a consumer group"
+    option :name, type: :string, required: true
+    def consumergroup
+      validate_class_options!
+
+      cg = Kazoo::Consumergroup.new(kafka_cluster, options[:name])
+      raise Kazoo::Error, "Consumergroup #{options[:name]} is not registered in Zookeeper" unless cg.exists?
+
+      puts "Consumer group: #{cg.name}\n"
+
+      if cg.active?
+        puts "Running instances:"
+        cg.instances.each do |instance|
+          puts "- #{instance.id}"
+        end
+      else
+        puts "This consumer group is inactive."
+      end
+    end
+
+    desc "delete_consumergroup", "Removes a consumer group from Zookeeper"
+    option :name, type: :string, required: true
+    def delete_consumergroup
+      validate_class_options!
+
+      cg = Kazoo::Consumergroup.new(kafka_cluster, options[:name])
+      raise Kazoo::Error, "Consumergroup #{options[:name]} is not registered in Zookeeper" unless cg.exists?
+      raise Kazoo::Error, "Cannot remove consumergroup #{cg.name} because it's still active" if cg.active?
+
+      cg.destroy
+    end
+
+
     private
 
     def validate_class_options!

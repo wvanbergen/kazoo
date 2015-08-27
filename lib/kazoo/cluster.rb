@@ -92,5 +92,26 @@ module Kazoo
     def close
       zk.close
     end
+
+    protected
+
+    def recursive_delete(path: nil)
+      raise ArgumentError if path.nil?
+
+      result = zk.get_children(path: path)
+      raise Kazoo::Error, "Failed to list children of #{path} to delete them. Result code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+      threads = []
+      result.fetch(:children).each do |name|
+        threads << Thread.new do
+          Thread.abort_on_exception = true
+          recursive_delete(path: File.join(path, name))
+        end
+        threads.each(&:join)
+      end
+
+      result = zk.delete(path: path)
+      raise Kazoo::Error, "Failed to delete node #{path}. Result code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
+    end
   end
 end

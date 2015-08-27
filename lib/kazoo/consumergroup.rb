@@ -13,6 +13,10 @@ module Kazoo
       cluster.zk.create(path: "/consumers/#{name}/offsets")
     end
 
+    def destroy
+      cluster.send(:recursive_delete, path: "/consumers/#{name}")
+    end
+
     def exists?
       stat = cluster.zk.stat(path: "/consumers/#{name}")
       stat.fetch(:stat).exists?
@@ -23,9 +27,20 @@ module Kazoo
       Instance.new(self, id: id)
     end
 
+    def active?
+      instances.length > 0
+    end
+
     def instances
-      instances = cluster.zk.get_children(path: "/consumers/#{name}/ids")
-      instances.fetch(:children).map { |id| Instance.new(self, id: id) }
+      result = cluster.zk.get_children(path: "/consumers/#{name}/ids")
+      case result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        result.fetch(:children).map { |id| Instance.new(self, id: id) }
+      when Zookeeper::Constants::ZNONODE
+        []
+      else
+        raise Kazoo::Error, "Failed getting a list of runniong instances for #{name}. Error code: #{result.fetch(:rc)}"
+      end
     end
 
     def watch_instances(&block)
@@ -52,7 +67,7 @@ module Kazoo
       when Zookeeper::Constants::ZOK
         [Kazoo::Consumergroup::Instance.new(self, id: result.fetch(:data)), cb]
       else
-        raise Kazoo::Error, "Failed set watch for partition claim of #{partition.topic.name}/#{partition.id}. Error code: #{result.fetch(:rc)}"
+        raise Kazoo::Error, "Failed to set watch for partition claim of #{partition.topic.name}/#{partition.id}. Error code: #{result.fetch(:rc)}"
       end
     end
 
