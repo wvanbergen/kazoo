@@ -1,6 +1,7 @@
 module Kazoo
   class Topic
-    VALID_TOPIC_NAME = %r{\A[a-zA-Z0-9\\._\\-]+\z}
+    VALID_TOPIC_NAMES = %r{\A[a-zA-Z0-9\\._\\-]+\z}
+    BLACKLISTED_TOPIC_NAMES = %r{\A\.\.?\z}
 
     attr_reader :cluster, :name
     attr_accessor :partitions
@@ -51,7 +52,8 @@ module Kazoo
     end
 
     def validate
-      raise Kazoo::ValidationError, "#{name} is not a valid topic name" if VALID_TOPIC_NAME !~ name
+      raise Kazoo::ValidationError, "#{name} is not a valid topic name" if VALID_TOPIC_NAMES !~ name
+      raise Kazoo::ValidationError, "#{name} is not a valid topic name" if BLACKLISTED_TOPIC_NAMES =~ name
       raise Kazoo::ValidationError, "#{name} is too long" if name.length > 255
       raise Kazoo::ValidationError, "The topic has no partitions defined" if partitions.length == 0
       partitions.each(&:validate)

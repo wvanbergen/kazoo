@@ -60,6 +60,10 @@ class TopicTest < Minitest::Test
     t.partitions = [t.partition(0, replicas: [@cluster.brokers[1]])]
     refute t.valid?
 
+    t = Kazoo::Topic.new(@cluster, "..")
+    t.partitions = [t.partition(0, replicas: [@cluster.brokers[1]])]
+    refute t.valid?
+
     t = Kazoo::Topic.new(@cluster, "l#{'o' * 253}ng")
     t.partitions = [t.partition(0, replicas: [@cluster.brokers[1]])]
     refute t.valid?
