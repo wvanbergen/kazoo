@@ -47,6 +47,10 @@ module Kazoo
       end
     end
 
+    def consumergroup(name)
+      Kazoo::Consumergroup.new(self, name)
+    end
+
     def topics
       @topics_mutex.synchronize do
         @topics ||= begin
@@ -68,6 +72,10 @@ module Kazoo
           result
         end
       end
+    end
+
+    def topic(name)
+      Kazoo::Topic.new(self, name)
     end
 
     def create_topic(name, partitions: nil, replication_factor: nil)
