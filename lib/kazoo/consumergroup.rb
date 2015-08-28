@@ -20,6 +20,13 @@ module Kazoo
       stat.fetch(:stat).exists?
     end
 
+    def created_at
+      result = cluster.zk.stat(path: "/consumers/#{name}")
+      raise Kazoo::Error, "Failed to get consumer details. Error code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+      Time.at(result.fetch(:stat).mtime / 1000.0)
+    end
+
 
     def instantiate(id: nil)
       Instance.new(self, id: id)
@@ -69,31 +76,88 @@ module Kazoo
       end
     end
 
+    def topics
+      topic_result = cluster.zk.get_children(path: "/consumers/#{name}/owners")
+      case topic_result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        topic_result.fetch(:children).map { |topic_name| cluster.topic(topic_name) }
+      when Zookeeper::Constants::ZNONODE
+        []
+      else
+        raise Kazoo::Error, "Failed to get subscribed topics. Result code: #{topic_result.fetch(:rc)}"
+      end
+    end
+
+    def partitions
+      partitions, threads, mutex = [], [], Mutex.new
+      topics.each do |topic|
+        threads << Thread.new do
+          topic_partitions = topic.partitions
+          mutex.synchronize { partitions.concat(topic_partitions) }
+        end
+      end
+
+      threads.each(&:join)
+      return partitions
+    end
+
+    def unclaimed_partitions
+      partitions - partition_claims.keys
+    end
+
+    def partition_claims
+      topic_result = cluster.zk.get_children(path: "/consumers/#{name}/owners")
+      case topic_result.fetch(:rc)
+        when Zookeeper::Constants::ZOK; # continue
+        when Zookeeper::Constants::ZNONODE; return {}
+        else raise Kazoo::Error, "Failed to get partition claims. Result code: #{topic_result.fetch(:rc)}"
+      end
+
+      partition_claims, threads, mutex = {}, [], Mutex.new
+      topic_result.fetch(:children).each do |topic_name|
+        threads << Thread.new do
+          topic = cluster.topic(topic_name)
+
+          partition_result = cluster.zk.get_children(path: "/consumers/#{name}/owners/#{topic.name}")
+          raise Kazoo::Error, "Failed to get partition claims. Result code: #{partition_result.fetch(:rc)}" if partition_result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+          partition_threads = []
+          partition_result.fetch(:children).each do |partition_id|
+            partition_threads << Thread.new do
+              partition = topic.partition(partition_id.to_i)
+
+              claim_result =cluster.zk.get(path: "/consumers/#{name}/owners/#{topic.name}/#{partition.id}")
+              raise Kazoo::Error, "Failed to get partition claims. Result code: #{claim_result.fetch(:rc)}" if claim_result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+              mutex.synchronize { partition_claims[partition] = instantiate(id: claim_result.fetch(:data)) }
+            end
+          end
+          partition_threads.each(&:join)
+        end
+      end
+
+      threads.each(&:join)
+      return partition_claims
+    end
+
     def retrieve_offset(partition)
       result = cluster.zk.get(path: "/consumers/#{name}/offsets/#{partition.topic.name}/#{partition.id}")
       case result.fetch(:rc)
-      when Zookeeper::Constants::ZOK;
-        result.fetch(:data).to_i
-      when Zookeeper::Constants::ZNONODE;
-        nil
-      else
-        raise Kazoo::Error, "Failed to retrieve offset for partition #{partition.topic.name}/#{partition.id}. Error code: #{result.fetch(:rc)}"
+        when Zookeeper::Constants::ZOK; result.fetch(:data).to_i
+        when Zookeeper::Constants::ZNONODE; nil
+        else raise Kazoo::Error, "Failed to retrieve offset for partition #{partition.topic.name}/#{partition.id}. Error code: #{result.fetch(:rc)}"
       end
     end
 
     def retrieve_all_offsets
-      offsets, threads, mutex = {}, [], Mutex.new
-
       topic_result = cluster.zk.get_children(path: "/consumers/#{name}/offsets")
       case topic_result.fetch(:rc)
-      when Zookeeper::Constants::ZOK;
-        # continue
-      when Zookeeper::Constants::ZNONODE;
-        return offsets
-      else
-        raise Kazoo::Error, "Failed to retrieve offset for partition #{partition.topic.name}/#{partition.id}. Error code: #{topic_result.fetch(:rc)}"
+        when Zookeeper::Constants::ZOK; # continue
+        when Zookeeper::Constants::ZNONODE; return {}
+        else raise Kazoo::Error, "Failed to retrieve offset for partition #{partition.topic.name}/#{partition.id}. Error code: #{topic_result.fetch(:rc)}"
       end
 
+      offsets, threads, mutex = {}, [], Mutex.new
       topic_result.fetch(:children).each do |topic_name|
         threads << Thread.new do
           Thread.abort_on_exception = true
@@ -199,6 +263,14 @@ module Kazoo
           end
         end
       end
+
+      def created_at
+        result = cluster.zk.stat(path: "/consumers/#{group.name}/ids/#{id}")
+        raise Kazoo::Error, "Failed to get instance details. Error code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+        Time.at(result.fetch(:stat).mtime / 1000.0)
+      end
+
 
       def deregister
         cluster.zk.delete(path: "/consumers/#{group.name}/ids/#{id}")
