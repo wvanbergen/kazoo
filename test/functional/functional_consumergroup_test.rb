@@ -6,9 +6,13 @@ class FunctionalConsumergroupTest < Minitest::Test
     @cluster = Kazoo.connect(zookeeper)
     @cg = Kazoo::Consumergroup.new(@cluster, 'test.kazoo')
     @cg.create
+
+    @topic = @cluster.create_topic("test.4", partitions: 4, replication_factor: 1)
   end
 
   def teardown
+    @topic.destroy
+
     cg = Kazoo::Consumergroup.new(@cluster, 'test.kazoo')
     cg.destroy if cg.exists?
 
@@ -38,6 +42,31 @@ class FunctionalConsumergroupTest < Minitest::Test
 
     @cg.reset_all_offsets
     assert_nil @cg.retrieve_offset(partition)
+  end
+
+  def test_unclaimed_partitions
+    partition40 = @topic.partition(0)
+    partition41 = @topic.partition(1)
+    partition42 = @topic.partition(2)
+    partition43 = @topic.partition(3)
+
+    refute @cg.active?
+
+    instance1 = @cg.instantiate
+    instance1.register([@topic])
+    instance2 = @cg.instantiate
+    instance2.register([@topic])
+
+    assert @cg.active?
+
+    instance1.claim_partition(partition40)
+    instance2.claim_partition(partition41)
+
+    assert_equal 2, @cg.partition_claims.length
+    assert_equal [@topic], @cg.topics
+    assert_equal @topic.partitions, @cg.partitions
+
+    assert_equal Set[partition42, partition43], Set.new(@cg.unclaimed_partitions)
   end
 
   def test_retrieve_all_offsets

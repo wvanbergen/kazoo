@@ -4,11 +4,10 @@ module Kazoo
     BLACKLISTED_TOPIC_NAMES = %r{\A\.\.?\z}
 
     attr_reader :cluster, :name
-    attr_accessor :partitions
+    attr_writer :partitions
 
     def initialize(cluster, name)
       @cluster, @name = cluster, name
-      @partitions = []
     end
 
     def self.from_json(cluster, name, json)
@@ -18,6 +17,18 @@ module Kazoo
       end.sort_by(&:id)
 
       return topic
+    end
+
+    def partitions
+      @partitions ||= begin
+        result = cluster.zk.get(path: "/brokers/topics/#{name}")
+        raise Kazoo::Error, "Failed to get list of partitions for #{name}. Result code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+        partition_json = JSON.parse(result.fetch(:data))
+        partition_json.fetch('partitions').map do |(id, replicas)|
+          partition(id.to_i, replicas: replicas.map { |b| cluster.brokers[b] })
+        end
+      end
     end
 
     def partition(*args)

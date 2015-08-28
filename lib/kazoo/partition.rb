@@ -50,6 +50,10 @@ module Kazoo
       "#<Kazoo::Partition #{topic.name}/#{id}>"
     end
 
+    def key
+      "#{topic.name}/#{id}"
+    end
+
     def eql?(other)
       other.kind_of?(Kazoo::Partition) && topic == other.topic && id == other.id
     end
