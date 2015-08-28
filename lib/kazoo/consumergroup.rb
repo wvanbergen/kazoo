@@ -7,10 +7,8 @@ module Kazoo
     end
 
     def create
-      cluster.zk.create(path: "/consumers/#{name}")
-      cluster.zk.create(path: "/consumers/#{name}/ids")
-      cluster.zk.create(path: "/consumers/#{name}/owners")
-      cluster.zk.create(path: "/consumers/#{name}/offsets")
+      cluster.send(:recursive_create, path: "/consumers/#{name}/ids")
+      cluster.send(:recursive_create, path: "/consumers/#{name}/owners")
     end
 
     def destroy
@@ -74,26 +72,64 @@ module Kazoo
     def retrieve_offset(partition)
       result = cluster.zk.get(path: "/consumers/#{name}/offsets/#{partition.topic.name}/#{partition.id}")
       case result.fetch(:rc)
-        when Zookeeper::Constants::ZOK;
-          result.fetch(:data).to_i
-        when Zookeeper::Constants::ZNONODE;
-          nil
-        else
-          raise Kazoo::Error, "Failed to retrieve offset for partition #{partition.topic.name}/#{partition.id}. Error code: #{result.fetch(:rc)}"
+      when Zookeeper::Constants::ZOK;
+        result.fetch(:data).to_i
+      when Zookeeper::Constants::ZNONODE;
+        nil
+      else
+        raise Kazoo::Error, "Failed to retrieve offset for partition #{partition.topic.name}/#{partition.id}. Error code: #{result.fetch(:rc)}"
       end
     end
 
-    def commit_offset(partition, offset)
-      result = cluster.zk.set(path: "/consumers/#{name}/offsets/#{partition.topic.name}/#{partition.id}", data: (offset + 1).to_s)
-      if result.fetch(:rc) == Zookeeper::Constants::ZNONODE
-        result = cluster.zk.create(path: "/consumers/#{name}/offsets/#{partition.topic.name}")
-        case result.fetch(:rc)
-          when Zookeeper::Constants::ZOK, Zookeeper::Constants::ZNODEEXISTS
-        else
-          raise Kazoo::Error, "Failed to commit offset #{offset} for partition #{partition.topic.name}/#{partition.id}. Error code: #{result.fetch(:rc)}"
-        end
+    def retrieve_all_offsets
+      offsets, threads, mutex = {}, [], Mutex.new
 
-        result = cluster.zk.create(path: "/consumers/#{name}/offsets/#{partition.topic.name}/#{partition.id}", data: (offset + 1).to_s)
+      topic_result = cluster.zk.get_children(path: "/consumers/#{name}/offsets")
+      case topic_result.fetch(:rc)
+      when Zookeeper::Constants::ZOK;
+        # continue
+      when Zookeeper::Constants::ZNONODE;
+        return offsets
+      else
+        raise Kazoo::Error, "Failed to retrieve offset for partition #{partition.topic.name}/#{partition.id}. Error code: #{topic_result.fetch(:rc)}"
+      end
+
+      topic_result.fetch(:children).each do |topic_name|
+        threads << Thread.new do
+          Thread.abort_on_exception = true
+
+          topic = Kazoo::Topic.new(cluster, topic_name)
+          partition_result = cluster.zk.get_children(path: "/consumers/#{name}/offsets/#{topic.name}")
+          raise Kazoo::Error, "Failed to retrieve offsets. Error code: #{partition_result.fetch(:rc)}" if partition_result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+          partition_threads = []
+          partition_result.fetch(:children).each do |partition_id|
+            partition_threads << Thread.new do
+              Thread.abort_on_exception = true
+
+              partition = topic.partition(partition_id.to_i)
+              offset_result = cluster.zk.get(path: "/consumers/#{name}/offsets/#{topic.name}/#{partition.id}")
+              raise Kazoo::Error, "Failed to retrieve offsets. Error code: #{offset_result.fetch(:rc)}" if offset_result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+              mutex.synchronize { offsets[partition] = offset_result.fetch(:data).to_i }
+            end
+          end
+          partition_threads.each(&:join)
+        end
+      end
+
+      threads.each(&:join)
+      return offsets
+    end
+
+    def commit_offset(partition, offset)
+      partition_offset_path = "/consumers/#{name}/offsets/#{partition.topic.name}/#{partition.id}"
+      next_offset_data = (offset + 1).to_s
+
+      result = cluster.zk.set(path: partition_offset_path, data: next_offset_data)
+      if result.fetch(:rc) == Zookeeper::Constants::ZNONODE
+        cluster.send(:recursive_create, path: File.dirname(partition_offset_path))
+        result = cluster.zk.create(path: partition_offset_path, data: next_offset_data)
       end
 
       if result.fetch(:rc) != Zookeeper::Constants::ZOK
@@ -101,22 +137,8 @@ module Kazoo
       end
     end
 
-    def reset_offsets
-      result = cluster.zk.get_children(path: "/consumers/#{name}/offsets")
-      raise Kazoo::Error unless result.fetch(:rc) == Zookeeper::Constants::ZOK
-
-      result.fetch(:children).each do |topic|
-        result = cluster.zk.get_children(path: "/consumers/#{name}/offsets/#{topic}")
-        raise Kazoo::Error unless result.fetch(:rc) == Zookeeper::Constants::ZOK
-
-        result.fetch(:children).each do |partition|
-          cluster.zk.delete(path: "/consumers/#{name}/offsets/#{topic}/#{partition}")
-          raise Kazoo::Error unless result.fetch(:rc) == Zookeeper::Constants::ZOK
-        end
-
-        cluster.zk.delete(path: "/consumers/#{name}/offsets/#{topic}")
-        raise Kazoo::Error unless result.fetch(:rc) == Zookeeper::Constants::ZOK
-      end
+    def reset_all_offsets
+      cluster.send(:recursive_delete, path: "/consumers/#{name}/offsets")
     end
 
     def inspect

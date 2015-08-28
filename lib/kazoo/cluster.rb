@@ -103,8 +103,24 @@ module Kazoo
 
     protected
 
+    def recursive_create(path: nil)
+      raise ArgumentError, "path is a required argument" if path.nil?
+
+      result = zk.stat(path: path)
+      case result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        return
+      when Zookeeper::Constants::ZNONODE
+        recursive_create(path: File.dirname(path))
+        result = zk.create(path: path)
+        raise Kazoo::Error, "Failed to create node #{path}. Result code: #{result.fetch(:rc)}" unless result.fetch(:rc) == Zookeeper::Constants::ZOK
+      else
+        raise Kazoo::Error, "Failed to create node #{path}. Result code: #{result.fetch(:rc)}"
+      end
+    end
+
     def recursive_delete(path: nil)
-      raise ArgumentError if path.nil?
+      raise ArgumentError, "path is a required argument" if path.nil?
 
       result = zk.get_children(path: path)
       raise Kazoo::Error, "Failed to list children of #{path} to delete them. Result code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
