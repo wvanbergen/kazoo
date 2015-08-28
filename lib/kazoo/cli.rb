@@ -99,6 +99,33 @@ module Kazoo
         cg.instances.each do |instance|
           puts "- #{instance.id}"
         end
+
+        partition_claims = cg.partition_claims
+
+
+        if partition_claims.length > 0
+          partitions = partition_claims.keys.sort_by { |p| [p.topic.name, p.id] }
+
+          puts
+          puts "Partition claims:"
+          partitions.each do |partition|
+            instance = partition_claims[partition]
+            puts "- #{partition.key}: #{instance.id}"
+          end
+        else
+          puts
+          puts "WARNING: this consumer group is active but hasn't claimed any partitions"
+        end
+
+        unclaimed_partitions = (cg.partitions - partition_claims.keys).sort_by { |p| [p.topic.name, p.id] }
+
+        if unclaimed_partitions.length > 0
+          puts
+          puts "WARNING: this consumergroup has unclaimed partitions:"
+          unclaimed_partitions.each do |partition|
+            puts "- #{partition.key}"
+          end
+        end
       else
         puts "This consumer group is inactive."
       end
