@@ -89,7 +89,7 @@ module Kazoo
     def consumergroup
       validate_class_options!
 
-      cg = Kazoo::Consumergroup.new(kafka_cluster, options[:name])
+      cg = kafka_cluster.consumergroup(options[:name])
       raise Kazoo::Error, "Consumergroup #{options[:name]} is not registered in Zookeeper" unless cg.exists?
 
       puts "Consumer group: #{cg.name}\n"
@@ -109,11 +109,23 @@ module Kazoo
     def delete_consumergroup
       validate_class_options!
 
-      cg = Kazoo::Consumergroup.new(kafka_cluster, options[:name])
+      cg = kafka_cluster.consumergroup(options[:name])
       raise Kazoo::Error, "Consumergroup #{options[:name]} is not registered in Zookeeper" unless cg.exists?
       raise Kazoo::Error, "Cannot remove consumergroup #{cg.name} because it's still active" if cg.active?
 
       cg.destroy
+    end
+
+    desc "reset_consumergroup", "Resets all the offsets stored for a consumergroup"
+    option :name, type: :string, required: true
+    def reset_consumergroup
+      validate_class_options!
+
+      cg = kafka_cluster.consumergroup(options[:name])
+      raise Kazoo::Error, "Consumergroup #{options[:name]} is not registered in Zookeeper" unless cg.exists?
+      raise Kazoo::Error, "Cannot remove consumergroup #{cg.name} because it's still active" if cg.active?
+
+      cg.reset_all_offsets
     end
 
 
