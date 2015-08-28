@@ -1,6 +1,14 @@
 language: ruby
 sudo: false
 
+env:
+  global:
+  - ZOOKEEPER_PEERS=localhost:2181
+  - DEBUG=true
+
+before_script:
+- make confluent/kafka/start
+
 rvm:
 - "2.0"
 - "2.1"

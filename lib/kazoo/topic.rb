@@ -46,7 +46,7 @@ module Kazoo
       [cluster, name].hash
     end
 
-    def exist?
+    def exists?
       stat = cluster.zk.stat(path: "/brokers/topics/#{name}")
       stat.fetch(:stat).exists?
     end
@@ -68,7 +68,7 @@ module Kazoo
     end
 
     def create
-      raise Kazoo::Error, "The topic #{name} already exists!" if exist?
+      raise Kazoo::Error, "The topic #{name} already exists!" if exists?
       validate
 
       result = cluster.zk.create(
@@ -79,14 +79,40 @@ module Kazoo
       if result.fetch(:rc) != Zookeeper::Constants::ZOK
         raise Kazoo::Error, "Failed to create topic #{name}. Error code: #{result.fetch(:rc)}"
       end
+
+      wait_for_partitions
     end
 
     def destroy
-      raise Kazoo::Error, "The topic #{name} does not exist!" unless exist?
-      result = cluster.zk.create(path: "/admin/delete_topics/#{name}")
+      t = Thread.current
+      cb = Zookeeper::Callbacks::WatcherCallback.create do |event|
+        case event.type
+        when Zookeeper::Constants::ZOO_DELETED_EVENT
+          t.run if t.status == 'sleep'
+        else
+          raise Kazoo::Error, "Unexpected Zookeeper event: #{event.type}"
+        end
+      end
 
-      if result.fetch(:rc) != Zookeeper::Constants::ZOK
-        raise Kazoo::Error, "Failed to create topic #{name}. Error code: #{result.fetch(:rc)}"
+      result = cluster.zk.stat(path: "/brokers/topics/#{name}", watcher: cb)
+      case result.fetch(:rc)
+       when Zookeeper::Constants::ZOK
+        # continue
+      when Zookeeper::Constants::ZNONODE
+        raise Kazoo::Error, "Topic #{name} does not exist!"
+      else
+        raise Kazoo::Error, "Failed to monitor topic"
+      end
+
+
+      result = cluster.zk.create(path: "/admin/delete_topics/#{name}")
+      case result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        Thread.stop unless cb.completed?
+      when Zookeeper::Constants::ZNODEEXISTS
+        raise Kazoo::Error, "The topic #{name} is already marked for deletion!"
+      else
+        raise Kazoo::Error, "Failed to delete topic #{name}. Error code: #{result.fetch(:rc)}"
       end
     end
 
@@ -98,6 +124,17 @@ module Kazoo
     end
 
     protected
+
+    def wait_for_partitions
+      threads = []
+      partitions.each do |partition|
+        threads << Thread.new do
+          Thread.abort_on_exception = true
+          partition.wait_for_leader
+        end
+      end
+      threads.each(&:join)
+    end
 
     def sequentially_assign_partitions(partition_count, replication_factor, brokers: nil)
       brokers = cluster.brokers.values if brokers.nil?
