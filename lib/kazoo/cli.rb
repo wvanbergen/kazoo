@@ -8,8 +8,6 @@ require 'kazoo/cli/topics'
 
 module Kazoo
   class CLI < Thor
-    include Kazoo::CLI::Common
-
     desc "cluster SUBCOMMAND ...ARGS", "Inspect the Kafka cluster"
     subcommand "cluster", Kazoo::CLI::Cluster
 

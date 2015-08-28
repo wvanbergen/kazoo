@@ -7,7 +7,7 @@ module Kazoo
       def list
         validate_class_options!
 
-        kafka_cluster.consumergroups.each do |group|
+        kafka_cluster.consumergroups.sort_by(&:name).each do |group|
           instances = group.instances
           if instances.length == 0
             puts "- #{group.name}: inactive"
