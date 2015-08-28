@@ -92,22 +92,27 @@ module Kazoo
       cg = kafka_cluster.consumergroup(options[:name])
       raise Kazoo::Error, "Consumergroup #{options[:name]} is not registered in Zookeeper" unless cg.exists?
 
-      puts "Consumer group: #{cg.name}\n"
+      topics = cg.topics.sort_by(&:name)
 
-      if cg.active?
-        puts "Running instances:"
-        cg.instances.each do |instance|
-          puts "- #{instance.id}"
+      puts "Consumer name: #{cg.name}"
+      puts "Created on: #{cg.created_at}"
+      puts "Topics (#{topics.length}): #{topics.map(&:name).join(', ')}"
+
+      instances = cg.instances
+      if instances.length > 0
+
+        puts
+        puts "Running instances (#{instances.length}):"
+        instances.each do |instance|
+          puts "- #{instance.id}\t(created on #{instance.created_at})"
         end
 
         partition_claims = cg.partition_claims
-
-
         if partition_claims.length > 0
           partitions = partition_claims.keys.sort_by { |p| [p.topic.name, p.id] }
 
           puts
-          puts "Partition claims:"
+          puts "Partition claims (#{partition_claims.length}):"
           partitions.each do |partition|
             instance = partition_claims[partition]
             puts "- #{partition.key}: #{instance.id}"
@@ -121,7 +126,7 @@ module Kazoo
 
         if unclaimed_partitions.length > 0
           puts
-          puts "WARNING: this consumergroup has unclaimed partitions:"
+          puts "WARNING: this consumergroup has #{unclaimed_partitions.length} unclaimed partitions:"
           unclaimed_partitions.each do |partition|
             puts "- #{partition.key}"
           end

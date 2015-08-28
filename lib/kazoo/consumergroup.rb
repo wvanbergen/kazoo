@@ -20,6 +20,13 @@ module Kazoo
       stat.fetch(:stat).exists?
     end
 
+    def created_at
+      result = cluster.zk.stat(path: "/consumers/#{name}")
+      raise Kazoo::Error, "Failed to get consumer details. Error code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+      Time.at(result.fetch(:stat).mtime / 1000.0)
+    end
+
 
     def instantiate(id: nil)
       Instance.new(self, id: id)
@@ -256,6 +263,14 @@ module Kazoo
           end
         end
       end
+
+      def created_at
+        result = cluster.zk.stat(path: "/consumers/#{group.name}/ids/#{id}")
+        raise Kazoo::Error, "Failed to get instance details. Error code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+        Time.at(result.fetch(:stat).mtime / 1000.0)
+      end
+
 
       def deregister
         cluster.zk.delete(path: "/consumers/#{group.name}/ids/#{id}")
