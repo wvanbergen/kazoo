@@ -85,8 +85,17 @@ module Kazoo
       validate
 
       result = cluster.zk.create(
+        path: "/config/topics/#{name}",
+        data: JSON.generate(version: 1, config: {})
+      )
+
+      if result.fetch(:rc) != Zookeeper::Constants::ZOK
+        raise Kazoo::Error, "Failed to create topic config node for #{name}. Error code: #{result.fetch(:rc)}"
+      end
+
+      result = cluster.zk.create(
         path: "/brokers/topics/#{name}",
-        data: JSON.dump(version: 1, partitions: partitions_as_json)
+        data: JSON.generate(version: 1, partitions: partitions_as_json)
       )
 
       if result.fetch(:rc) != Zookeeper::Constants::ZOK
@@ -109,10 +118,10 @@ module Kazoo
 
       result = cluster.zk.stat(path: "/brokers/topics/#{name}", watcher: cb)
       case result.fetch(:rc)
-       when Zookeeper::Constants::ZOK
+      when Zookeeper::Constants::ZOK
         # continue
       when Zookeeper::Constants::ZNONODE
-        raise Kazoo::Error, "Topic #{name} does not exist!"
+        raise Kazoo::TopicNotFound, "Topic #{name} does not exist!"
       else
         raise Kazoo::Error, "Failed to monitor topic"
       end
@@ -127,6 +136,61 @@ module Kazoo
       else
         raise Kazoo::Error, "Failed to delete topic #{name}. Error code: #{result.fetch(:rc)}"
       end
+    end
+
+    def config
+      result = cluster.zk.get(path: "/config/topics/#{name}")
+      case result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        # continue
+      when Zookeeper::Constants::ZNONODE
+        raise Kazoo::TopicNotFound, "Topic #{name} does not exist!"
+      else
+        raise Kazoo::Error, "Failed to set topic config"
+      end
+
+      config = JSON.parse(result.fetch(:data))
+      raise Kazoo::VersionNotSupported if config.fetch('version') != 1
+
+      config.fetch('config')
+    end
+
+    def set_config(key, value)
+      new_config = config
+      new_config[key.to_s] = value.to_s
+      write_config(new_config)
+    end
+
+    def delete_config(key)
+      new_config = config
+      new_config.delete(key.to_s)
+      write_config(new_config)
+    end
+
+    def reset_default_config
+      write_config({})
+    end
+
+    def write_config(config_hash)
+      raise Kazoo::TopicNotFound, "Topic #{name.inspect} does not exist" unless exists?
+
+      config = config_hash.inject({}) { |h, (k,v)| h[k.to_s] = v.to_s; h }
+      config_json = JSON.generate(version: 1, config: config)
+
+      # Set topic config
+      result = cluster.zk.set(path: "/config/topics/#{name}", data: config_json)
+      case result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        # continue
+      when Zookeeper::Constants::ZNONODE
+        raise Kazoo::TopicNotFound, "Topic #{name} does not exist!"
+      else
+        raise Kazoo::Error, "Failed to set topic config"
+      end
+
+      # Set config change notification
+      result = cluster.zk.create(path: "/config/changes/config_change_", data: name.inspect, sequence: true)
+      raise Kazoo::Error, "Failed to set topic config change notification" unless result.fetch(:rc) == Zookeeper::Constants::ZOK
     end
 
     def self.create(cluster, name, partitions: nil, replication_factor: nil)
