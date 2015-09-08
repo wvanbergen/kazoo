@@ -11,6 +11,8 @@ module Kazoo
     end
 
     def self.from_json(cluster, name, json)
+      raise Kazoo::VersionNotSupported unless json.fetch('version') == 1
+
       topic = new(cluster, name)
       topic.partitions = json.fetch('partitions').map do |(id, replicas)|
         topic.partition(id.to_i, replicas: replicas.map { |b| cluster.brokers[b] })
