@@ -144,9 +144,9 @@ module Kazoo
       when Zookeeper::Constants::ZOK
         # continue
       when Zookeeper::Constants::ZNONODE
-        raise Kazoo::TopicNotFound, "Topic #{name} does not exist!"
+        return {}
       else
-        raise Kazoo::Error, "Failed to set topic config"
+        raise Kazoo::Error, "Failed to retrieve topic config"
       end
 
       config = JSON.parse(result.fetch(:data))
@@ -183,7 +183,8 @@ module Kazoo
       when Zookeeper::Constants::ZOK
         # continue
       when Zookeeper::Constants::ZNONODE
-        raise Kazoo::TopicNotFound, "Topic #{name} does not exist!"
+        result = cluster.zk.create(path: "/config/topics/#{name}", data: config_json)
+        raise Kazoo::Error, "Failed to set topic config" unless result.fetch(:rc) == Zookeeper::Constants::ZOK
       else
         raise Kazoo::Error, "Failed to set topic config"
       end
