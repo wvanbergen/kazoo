@@ -87,6 +87,8 @@ module Kazoo
     end
 
     def set_state(json)
+      raise Kazoo::VersionNotSupported unless json.fetch('version') == 1
+
       @leader = cluster.brokers.fetch(json.fetch('leader'))
       @isr = json.fetch('isr').map { |r| cluster.brokers.fetch(r) }
     end

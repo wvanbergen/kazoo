@@ -8,7 +8,9 @@ module Kazoo
   Error = Class.new(StandardError)
 
   ValidationError = Class.new(Kazoo::Error)
+  VersionNotSupported = Class.new(Kazoo::Error)
   NoClusterRegistered = Class.new(Kazoo::Error)
+  TopicNotFound = Class.new(Kazoo::Error)
   ConsumerInstanceRegistrationFailed = Class.new(Kazoo::Error)
   PartitionAlreadyClaimed = Class.new(Kazoo::Error)
   ReleasePartitionFailure = Class.new(Kazoo::Error)
