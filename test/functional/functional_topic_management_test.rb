@@ -14,7 +14,6 @@ class FunctionalTopicManagementTest < Minitest::Test
     assert_equal 8, topic.partitions.length
 
     topic.destroy
-    @cluster.reset_metadata
 
     refute topic.exists?
     refute @cluster.topics.key?(topic.name)
