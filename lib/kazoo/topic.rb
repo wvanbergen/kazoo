@@ -102,6 +102,7 @@ module Kazoo
         raise Kazoo::Error, "Failed to create topic #{name}. Error code: #{result.fetch(:rc)}"
       end
 
+      cluster.reset_metadata
       wait_for_partitions
     end
 
@@ -136,6 +137,8 @@ module Kazoo
       else
         raise Kazoo::Error, "Failed to delete topic #{name}. Error code: #{result.fetch(:rc)}"
       end
+
+      cluster.reset_metadata
     end
 
     def config
@@ -192,6 +195,8 @@ module Kazoo
       # Set config change notification
       result = cluster.zk.create(path: "/config/changes/config_change_", data: name.inspect, sequence: true)
       raise Kazoo::Error, "Failed to set topic config change notification" unless result.fetch(:rc) == Zookeeper::Constants::ZOK
+
+      cluster.reset_metadata
     end
 
     def self.create(cluster, name, partitions: nil, replication_factor: nil)
