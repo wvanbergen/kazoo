@@ -4,6 +4,12 @@ class FunctionalTopicManagementTest < Minitest::Test
   def setup
     zookeeper = ENV["ZOOKEEPER_PEERS"] || "127.0.0.1:2181"
     @cluster = Kazoo.connect(zookeeper)
+
+    topic = @cluster.topic('test.kazoo')
+    topic.destroy if topic.exists?
+
+    topic = @cluster.topic('test.kazoo.config')
+    topic.destroy if topic.exists?
   end
 
   def test_create_and_delete_topic

@@ -27,9 +27,18 @@ module Kazoo
       Time.at(result.fetch(:stat).mtime / 1000.0)
     end
 
+    def instantiate(id: nil, subscription: nil)
+      Instance.new(self, id: id, subscription: subscription)
+    end
 
-    def instantiate(id: nil)
-      Instance.new(self, id: id)
+    def subscription
+      subscriptions = instances.map(&:subscription).compact
+      raise NoRunningInstances, "Consumergroup #{name} has no running instances; cannot determine subscription" if subscriptions.length == 0
+
+      subscriptions.uniq!
+      raise InconsistentSubscriptions, "Subscriptions of running instances are different from each other" if subscriptions.length != 1
+
+      subscriptions.first
     end
 
     def active?
@@ -40,7 +49,7 @@ module Kazoo
       result = cluster.zk.get_children(path: "/consumers/#{name}/ids")
       case result.fetch(:rc)
       when Zookeeper::Constants::ZOK
-        result.fetch(:children).map { |id| Instance.new(self, id: id) }
+        instances_with_subscription(result.fetch(:children))
       when Zookeeper::Constants::ZNONODE
         []
       else
@@ -51,15 +60,17 @@ module Kazoo
     def watch_instances(&block)
       cb = Zookeeper::Callbacks::WatcherCallback.create(&block)
       result = cluster.zk.get_children(path: "/consumers/#{name}/ids", watcher: cb)
-
-      if result.fetch(:rc) != Zookeeper::Constants::ZOK
-        raise Kazoo::Error, "Failed to watch instances. Error code: #{result.fetch(:rc)}"
+      instances = case result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        instances_with_subscription(result.fetch(:children))
+      when Zookeeper::Constants::ZNONODE
+        []
+      else
+        raise Kazoo::Error, "Failed getting a list of runniong instances for #{name}. Error code: #{result.fetch(:rc)}"
       end
 
-      instances = result.fetch(:children).map { |id| Instance.new(self, id: id) }
       [instances, cb]
     end
-
 
     def watch_partition_claim(partition, &block)
       cb = Zookeeper::Callbacks::WatcherCallback.create(&block)
@@ -154,35 +165,72 @@ module Kazoo
       case topic_result.fetch(:rc)
         when Zookeeper::Constants::ZOK; # continue
         when Zookeeper::Constants::ZNONODE; return {}
-        else raise Kazoo::Error, "Failed to retrieve offset for partition #{partition.topic.name}/#{partition.id}. Error code: #{topic_result.fetch(:rc)}"
+        else raise Kazoo::Error, "Failed to get topic offsets. Result code: #{topic_result.fetch(:rc)}"
       end
 
-      offsets, threads, mutex = {}, [], Mutex.new
-      topic_result.fetch(:children).each do |topic_name|
-        threads << Thread.new do
+      offsets, mutex = {}, Mutex.new
+      topic_threads = topic_result.fetch(:children).map do |topic_name|
+        Thread.new do
           Thread.abort_on_exception = true
 
-          topic = Kazoo::Topic.new(cluster, topic_name)
+          topic = cluster.topic(topic_name)
           partition_result = cluster.zk.get_children(path: "/consumers/#{name}/offsets/#{topic.name}")
-          raise Kazoo::Error, "Failed to retrieve offsets. Error code: #{partition_result.fetch(:rc)}" if partition_result.fetch(:rc) != Zookeeper::Constants::ZOK
+          raise Kazoo::Error, "Failed to get partition offsets. Result code: #{partition_result.fetch(:rc)}" if partition_result.fetch(:rc) != Zookeeper::Constants::ZOK
 
-          partition_threads = []
-          partition_result.fetch(:children).each do |partition_id|
-            partition_threads << Thread.new do
+          partition_threads = partition_result.fetch(:children).map do |partition_id|
+            Thread.new do
               Thread.abort_on_exception = true
 
               partition = topic.partition(partition_id.to_i)
               offset_result = cluster.zk.get(path: "/consumers/#{name}/offsets/#{topic.name}/#{partition.id}")
-              raise Kazoo::Error, "Failed to retrieve offsets. Error code: #{offset_result.fetch(:rc)}" if offset_result.fetch(:rc) != Zookeeper::Constants::ZOK
-
-              mutex.synchronize { offsets[partition] = offset_result.fetch(:data).to_i }
+              offset = case offset_result.fetch(:rc)
+              when Zookeeper::Constants::ZOK
+                offset_result.fetch(:data).to_i
+              when Zookeeper::Constants::ZNONODE
+                nil
+              else
+                raise Kazoo::Error, "Failed to retrieve offset for #{partition.key}. Error code: #{offset_result.fetch(:rc)}"
+              end
+              mutex.synchronize { offsets[partition] = offset }
             end
           end
           partition_threads.each(&:join)
         end
       end
 
-      threads.each(&:join)
+      topic_threads.each(&:join)
+      return offsets
+    end
+
+    def retrieve_offsets(subscription = self.subscription)
+      subscription = Kazoo::Subscription.create(subscription)
+
+      offsets, mutex = {}, Mutex.new
+      topic_threads = subscription.topics(cluster).map do |topic|
+        Thread.new do
+          Thread.abort_on_exception = true
+
+          partition_threads = topic.partitions.map do |partition|
+            Thread.new do
+              Thread.abort_on_exception = true
+
+              offset_result = cluster.zk.get(path: "/consumers/#{name}/offsets/#{topic.name}/#{partition.id}")
+              offset = case offset_result.fetch(:rc)
+              when Zookeeper::Constants::ZOK
+                offset_result.fetch(:data).to_i
+              when Zookeeper::Constants::ZNONODE
+                nil
+              else
+                raise Kazoo::Error, "Failed to retrieve offset for #{partition.key}. Error code: #{offset_result.fetch(:rc)}"
+              end
+              mutex.synchronize { offsets[partition] = offset }
+            end
+          end
+          partition_threads.each(&:join)
+        end
+      end
+
+      topic_threads.each(&:join)
       return offsets
     end
 
@@ -205,6 +253,40 @@ module Kazoo
       cluster.send(:recursive_delete, path: "/consumers/#{name}/offsets")
     end
 
+    def cleanup_topics(subscription)
+      subscription = Kazoo::Subscription.create(subscription)
+
+      threads = topics.map do |topic|
+        Thread.new do
+          Thread.abort_on_exception = true
+          unless subscription.topics(cluster).include?(topic)
+            cluster.send(:recursive_delete, path: "/consumers/#{name}/owners/#{topic.name}")
+          end
+        end
+      end
+
+      threads.each(&:join)
+    end
+
+    def cleanup_offsets(subscription)
+      subscription = Kazoo::Subscription.create(subscription)
+
+      topics_result = cluster.zk.get_children(path: "/consumers/#{name}/offsets")
+      raise Kazoo::Error, "Failed to retrieve list of topics. Error code: #{topics_result.fetch(:rc)}" if topics_result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+      threads = topics_result.fetch(:children).map do |topic_name|
+        Thread.new do
+          Thread.abort_on_exception = true
+          topic = cluster.topic(topic_name)
+          unless subscription.topics(cluster).include?(topic)
+            cluster.send(:recursive_delete, path: "/consumers/#{name}/offsets/#{topic.name}")
+          end
+        end
+      end
+
+      threads.each(&:join)
+    end
+
     def inspect
       "#<Kazoo::Consumergroup name=#{name}>"
     end
@@ -219,17 +301,36 @@ module Kazoo
       [cluster, name].hash
     end
 
+    protected
+
+    def instances_with_subscription(instance_ids)
+      instances, threads, mutex = [], [], Mutex.new
+      instance_ids.each do |id|
+        threads << Thread.new do
+          Thread.abort_on_exception = true
+
+          subscription_result = cluster.zk.get(path: "/consumers/#{name}/ids/#{id}")
+          raise Kazoo::Error, "Failed to retrieve subscription for instance. Error code: #{result.fetch(:rc)}" if subscription_result.fetch(:rc) != Zookeeper::Constants::ZOK
+          subscription = Kazoo::Subscription.from_json(subscription_result.fetch(:data))
+          mutex.synchronize { instances << Instance.new(self, id: id, subscription: subscription) }
+        end
+      end
+      threads.each(&:join)
+      instances
+    end
+
     class Instance
 
       def self.generate_id
         "#{Socket.gethostname}:#{SecureRandom.uuid}"
       end
 
-      attr_reader :group, :id
+      attr_reader :group, :id, :subscription
 
-      def initialize(group, id: nil)
+      def initialize(group, id: nil, subscription: nil)
         @group = group
         @id = id || self.class.generate_id
+        @subscription = Kazoo::Subscription.create(subscription) unless subscription.nil?
       end
 
       def registered?
@@ -237,23 +338,21 @@ module Kazoo
         stat.fetch(:stat).exists?
       end
 
-      def register(subscription)
+      def register(subscription_deprecated = nil)
+        # Don't provide the subscription here, but provide it when instantiating the consumer instance.
+        @subscription = Kazoo::Subscription.create(subscription_deprecated) unless subscription_deprecated.nil?
+
         result = cluster.zk.create(
           path: "/consumers/#{group.name}/ids/#{id}",
           ephemeral: true,
-          data: JSON.generate({
-            version: 1,
-            timestamp: Time.now.to_i,
-            pattern: "static",
-            subscription: Hash[*subscription.flat_map { |topic| [topic.name, 1] } ]
-          })
+          data: subscription.to_json,
         )
 
         if result.fetch(:rc) != Zookeeper::Constants::ZOK
           raise Kazoo::ConsumerInstanceRegistrationFailed, "Failed to register instance #{id} for consumer group #{group.name}! Error code: #{result.fetch(:rc)}"
         end
 
-        subscription.each do |topic|
+        subscription.topics(cluster).each do |topic|
           stat = cluster.zk.stat(path: "/consumers/#{group.name}/owners/#{topic.name}")
           unless stat.fetch(:stat).exists?
             result = cluster.zk.create(path: "/consumers/#{group.name}/owners/#{topic.name}")
@@ -262,6 +361,8 @@ module Kazoo
             end
           end
         end
+
+        return self
       end
 
       def created_at
@@ -273,7 +374,12 @@ module Kazoo
 
 
       def deregister
-        cluster.zk.delete(path: "/consumers/#{group.name}/ids/#{id}")
+        result = cluster.zk.delete(path: "/consumers/#{group.name}/ids/#{id}")
+        if result.fetch(:rc) != Zookeeper::Constants::ZOK
+          raise Kazoo::Error, "Failed to deregister instance #{id} for consumer group #{group.name}! Error code: #{result.fetch(:rc)}"
+        end
+
+        return self
       end
 
       def claim_partition(partition)
