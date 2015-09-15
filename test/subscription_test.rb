@@ -131,4 +131,18 @@ class SubscriptionTest < Minitest::Test
     assert_equal ["^topic"], parsed_subscription.fetch('subscription').keys
     assert_equal [1], parsed_subscription.fetch('subscription').values
   end
+
+  def test_subscription_has_topic
+    static_subscription = Kazoo::Subscription.create(%w[topic.1 topic.4], pattern: :black_list)
+    assert static_subscription.has_topic?(@cluster.topic('topic.1'))
+    refute static_subscription.has_topic?(@cluster.topic('test.topic'))
+
+    whitelist_subscription = Kazoo::Subscription.create(/^topic\./, pattern: :white_list)
+    assert whitelist_subscription.has_topic?(@cluster.topic('topic.1'))
+    refute whitelist_subscription.has_topic?(@cluster.topic('test.topic'))
+
+    blacklist_subscription = Kazoo::Subscription.create(/^topic\./, pattern: :black_list)
+    refute blacklist_subscription.has_topic?(@cluster.topic('topic.1'))
+    assert blacklist_subscription.has_topic?(@cluster.topic('test.topic'))
+  end
 end

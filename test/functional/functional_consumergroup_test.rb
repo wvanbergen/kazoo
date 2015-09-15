@@ -127,7 +127,7 @@ class FunctionalConsumergroupTest < Minitest::Test
 
     offsets = @cg.retrieve_offsets(Kazoo::Subscription.everything)
 
-    assert_equal 5, offsets.length
+    assert offsets.length >= 5
     assert_equal 11, offsets[partition10]
     assert_equal 41, offsets[partition40]
     assert_equal 42, offsets[partition41]

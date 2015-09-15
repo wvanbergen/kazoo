@@ -60,12 +60,12 @@ module Kazoo
       @timestamp, @version = timestamp, version
     end
 
-    def watch_partitions(kazoo)
-      raise NotImplementedError
-    end
-
     def topics(kazoo)
       kazoo.topics.values.select { |topic| has_topic?(topic) }
+    end
+
+    def partitions(kazoo)
+      topics(kazoo).flat_map { |topic| topic.partitions }
     end
 
     def has_topic?(topic)
@@ -124,10 +124,6 @@ module Kazoo
       @topic_names = topic_names
     end
 
-    def watch_partitions(kazoo)
-      # TODO
-    end
-
     def has_topic?(topic)
       topic_names.include?(topic.name)
     end
@@ -152,10 +148,6 @@ module Kazoo
       super(**kwargs)
       raise ArgumentError, "#{pattern.inspect} is not a vaid pattern type" unless PATTERN_TYPES.include?(pattern)
       @regexp, @pattern = regexp, pattern
-    end
-
-    def watch_partitions(kazoo)
-      # TODO
     end
 
     def white_list?
