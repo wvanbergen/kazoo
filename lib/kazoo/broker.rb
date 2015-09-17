@@ -9,41 +9,41 @@ module Kazoo
     end
 
     def led_partitions
-      result, threads, mutex = [], ThreadGroup.new, Mutex.new
-      cluster.partitions.each do |partition|
-        t = Thread.new do
+      result, mutex = [], Mutex.new
+      threads = cluster.partitions.map do |partition|
+        Thread.new do
+          Thread.abort_on_exception = true
           select = partition.leader == self
           mutex.synchronize { result << partition } if select
         end
-        threads.add(t)
       end
-      threads.list.each(&:join)
+      threads.each(&:join)
       result
     end
 
     def replicated_partitions
-      result, threads, mutex = [], ThreadGroup.new, Mutex.new
-      cluster.partitions.each do |partition|
-        t = Thread.new do
+      result, mutex = [], Mutex.new
+      threads = cluster.partitions.map do |partition|
+        Thread.new do
+          Thread.abort_on_exception = true
           select = partition.replicas.include?(self)
           mutex.synchronize { result << partition } if select
         end
-        threads.add(t)
       end
-      threads.list.each(&:join)
+      threads.each(&:join)
       result
     end
 
     def critical?(replicas: 1)
-      result, threads, mutex = false, ThreadGroup.new, Mutex.new
-      replicated_partitions.each do |partition|
+      result, mutex = false, Mutex.new
+      threads = replicated_partitions.map do |partition|
         t = Thread.new do
+          Thread.abort_on_exception = true
           isr = partition.isr.reject { |r| r == self }
           mutex.synchronize { result = true if isr.length < replicas }
         end
-        threads.add(t)
       end
-      threads.list.each(&:join)
+      threads.each(&:join)
       result
     end
 
