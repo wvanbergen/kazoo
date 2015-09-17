@@ -45,7 +45,7 @@ class FunctionalConsumergroupTest < Minitest::Test
 
     refute @cg.active?
 
-    subscription = Kazoo::Subscription.create(@topic4)
+    subscription = Kazoo::Subscription.build(@topic4)
     instance1 = @cg.instantiate(subscription: subscription)
     instance1.register
     instance2 = @cg.instantiate(subscription: subscription)
@@ -84,7 +84,7 @@ class FunctionalConsumergroupTest < Minitest::Test
     deleted_topic.destroy if deleted_topic.exists?
     deleted_topic = @cluster.create_topic('non_existing', partitions: 1, replication_factor: 1)
 
-    subscription = Kazoo::Subscription.create([@topic4, deleted_topic])
+    subscription = Kazoo::Subscription.build([@topic4, deleted_topic])
     @cg.instantiate(subscription: subscription).register
 
     deleted_topic.destroy
@@ -94,7 +94,7 @@ class FunctionalConsumergroupTest < Minitest::Test
     @cg.cleanup_topics(Kazoo::Subscription.everything)
     assert_equal Set[@topic4], Set.new(@cg.topics)
 
-    @cg.cleanup_topics(Kazoo::Subscription.create([]))
+    @cg.cleanup_topics(Kazoo::Subscription.build([]))
     assert_equal [], @cg.topics
   end
 
@@ -148,7 +148,7 @@ class FunctionalConsumergroupTest < Minitest::Test
     deleted_topic.destroy if deleted_topic.exists?
     deleted_topic = @cluster.create_topic('non_existing', partitions: 1, replication_factor: 1)
 
-    subscription = Kazoo::Subscription.create([@topic4, deleted_topic])
+    subscription = Kazoo::Subscription.build([@topic4, deleted_topic])
 
     @cg.commit_offset(@topic4.partition(0), 1234)
     @cg.commit_offset(deleted_topic.partition(0), 1234)

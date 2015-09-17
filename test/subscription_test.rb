@@ -8,33 +8,33 @@ class SubscriptionTest < Minitest::Test
   end
 
   def test_static_subscription_topics
-    subscription = Kazoo::Subscription.create(['test.1', 'nonexisting'])
+    subscription = Kazoo::Subscription.build(['test.1', 'nonexisting'])
     topics = subscription.topics(@cluster)
     assert_equal Set['test.1'], Set.new(topics.map(&:name))
   end
 
   def test_pattern_subscription_topics
-    subscription = Kazoo::Subscription.create(/^test\.\d+/, pattern: :white_list)
+    subscription = Kazoo::Subscription.build(/^test\.\d+/, pattern: :white_list)
     topics = subscription.topics(@cluster)
     assert_equal Set['test.1', 'test.4'], Set.new(topics.map(&:name))
 
-    subscription = Kazoo::Subscription.create(/\.4/, pattern: :black_list)
+    subscription = Kazoo::Subscription.build(/\.4/, pattern: :black_list)
     topics = subscription.topics(@cluster)
     assert_equal Set['test.1'], Set.new(topics.map(&:name))
   end
 
   def test_equality
-    subscription1 = Kazoo::Subscription.create(/^test\.\d+/, pattern: :white_list)
-    subscription2 = Kazoo::Subscription.create(/^test\.\d+/, pattern: :white_list)
-    subscription3 = Kazoo::Subscription.create(/^test\.\d+/, pattern: :black_list)
-    subscription4 = Kazoo::Subscription.create(/^test\.\d*/, pattern: :white_list)
+    subscription1 = Kazoo::Subscription.build(/^test\.\d+/, pattern: :white_list)
+    subscription2 = Kazoo::Subscription.build(/^test\.\d+/, pattern: :white_list)
+    subscription3 = Kazoo::Subscription.build(/^test\.\d+/, pattern: :black_list)
+    subscription4 = Kazoo::Subscription.build(/^test\.\d*/, pattern: :white_list)
     assert subscription1 == subscription2
     refute subscription1 == subscription3
     refute subscription1 == subscription4
 
-    subscription1 = Kazoo::Subscription.create(:'test.1')
-    subscription2 = Kazoo::Subscription.create(['test.1'])
-    subscription3 = Kazoo::Subscription.create(['test.1', 'test.4'])
+    subscription1 = Kazoo::Subscription.build(:'test.1')
+    subscription2 = Kazoo::Subscription.build(['test.1'])
+    subscription3 = Kazoo::Subscription.build(['test.1', 'test.4'])
     assert subscription1 == subscription2
     refute subscription1 == subscription3
   end
@@ -72,7 +72,7 @@ class SubscriptionTest < Minitest::Test
   end
 
   def test_single_topic_static_subscription_json
-    subscription = Kazoo::Subscription.create('topic')
+    subscription = Kazoo::Subscription.build('topic')
     json = subscription.to_json
 
     parsed_subscription = JSON.parse(json)
@@ -86,7 +86,7 @@ class SubscriptionTest < Minitest::Test
   end
 
   def test_multi_topic_static_subscription_json
-    subscription = Kazoo::Subscription.create([:topic1, :topic2])
+    subscription = Kazoo::Subscription.build([:topic1, :topic2])
     json = subscription.to_json
 
     parsed_subscription = JSON.parse(json)
@@ -101,7 +101,7 @@ class SubscriptionTest < Minitest::Test
   end
 
   def test_whitelist_subscription_json
-    subscription = Kazoo::Subscription.create(/^topic/)
+    subscription = Kazoo::Subscription.build(/^topic/)
     json = subscription.to_json
 
     parsed_subscription = JSON.parse(json)
@@ -117,7 +117,7 @@ class SubscriptionTest < Minitest::Test
   end
 
   def test_blacklist_subscription_json
-    subscription = Kazoo::Subscription.create(/^topic/, pattern: :black_list)
+    subscription = Kazoo::Subscription.build(/^topic/, pattern: :black_list)
     json = subscription.to_json
 
     parsed_subscription = JSON.parse(json)
@@ -133,15 +133,15 @@ class SubscriptionTest < Minitest::Test
   end
 
   def test_subscription_has_topic
-    static_subscription = Kazoo::Subscription.create(%w[topic.1 topic.4], pattern: :black_list)
+    static_subscription = Kazoo::Subscription.build(%w[topic.1 topic.4], pattern: :black_list)
     assert static_subscription.has_topic?(@cluster.topic('topic.1'))
     refute static_subscription.has_topic?(@cluster.topic('test.topic'))
 
-    whitelist_subscription = Kazoo::Subscription.create(/^topic\./, pattern: :white_list)
+    whitelist_subscription = Kazoo::Subscription.build(/^topic\./, pattern: :white_list)
     assert whitelist_subscription.has_topic?(@cluster.topic('topic.1'))
     refute whitelist_subscription.has_topic?(@cluster.topic('test.topic'))
 
-    blacklist_subscription = Kazoo::Subscription.create(/^topic\./, pattern: :black_list)
+    blacklist_subscription = Kazoo::Subscription.build(/^topic\./, pattern: :black_list)
     refute blacklist_subscription.has_topic?(@cluster.topic('topic.1'))
     assert blacklist_subscription.has_topic?(@cluster.topic('test.topic'))
   end

@@ -203,7 +203,7 @@ module Kazoo
     end
 
     def retrieve_offsets(subscription = self.subscription)
-      subscription = Kazoo::Subscription.create(subscription)
+      subscription = Kazoo::Subscription.build(subscription)
 
       offsets, mutex = {}, Mutex.new
       topic_threads = subscription.topics(cluster).map do |topic|
@@ -254,7 +254,7 @@ module Kazoo
     end
 
     def cleanup_topics(subscription)
-      subscription = Kazoo::Subscription.create(subscription)
+      subscription = Kazoo::Subscription.build(subscription)
 
       threads = topics.map do |topic|
         Thread.new do
@@ -269,7 +269,7 @@ module Kazoo
     end
 
     def cleanup_offsets(subscription)
-      subscription = Kazoo::Subscription.create(subscription)
+      subscription = Kazoo::Subscription.build(subscription)
 
       topics_result = cluster.zk.get_children(path: "/consumers/#{name}/offsets")
       raise Kazoo::Error, "Failed to retrieve list of topics. Error code: #{topics_result.fetch(:rc)}" if topics_result.fetch(:rc) != Zookeeper::Constants::ZOK
@@ -330,7 +330,7 @@ module Kazoo
       def initialize(group, id: nil, subscription: nil)
         @group = group
         @id = id || self.class.generate_id
-        @subscription = Kazoo::Subscription.create(subscription) unless subscription.nil?
+        @subscription = Kazoo::Subscription.build(subscription) unless subscription.nil?
       end
 
       def registered?
@@ -340,7 +340,7 @@ module Kazoo
 
       def register(subscription_deprecated = nil)
         # Don't provide the subscription here, but provide it when instantiating the consumer instance.
-        @subscription = Kazoo::Subscription.create(subscription_deprecated) unless subscription_deprecated.nil?
+        @subscription = Kazoo::Subscription.build(subscription_deprecated) unless subscription_deprecated.nil?
 
         result = cluster.zk.create(
           path: "/consumers/#{group.name}/ids/#{id}",

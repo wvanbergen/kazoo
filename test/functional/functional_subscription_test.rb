@@ -12,8 +12,8 @@ class FunctionalTopicManagementTest < Minitest::Test
 
     assert_raises(Kazoo::NoRunningInstances) { cg.subscription }
 
-    subscription_1  = Kazoo::Subscription.create('topic.1')
-    subscription_14 = Kazoo::Subscription.create(['topic.1', 'topic.4'])
+    subscription_1  = Kazoo::Subscription.build('topic.1')
+    subscription_14 = Kazoo::Subscription.build(['topic.1', 'topic.4'])
 
     instance1 = cg.instantiate(subscription: subscription_1).register
     instance2 = cg.instantiate(subscription: subscription_1).register
@@ -43,7 +43,7 @@ class FunctionalTopicManagementTest < Minitest::Test
     topic2 = @cluster.create_topic('test.kazoo.subscription.2', partitions: 2, replication_factor: 1)
     topic3 = @cluster.create_topic('test.kazoo.non_matching', partitions: 1, replication_factor: 1)
 
-    subscription = Kazoo::Subscription.create(/^test\.kazoo\.subscription\.\d+/)
+    subscription = Kazoo::Subscription.build(/^test\.kazoo\.subscription\.\d+/)
     assert_equal Set[topic1, topic2], Set.new(subscription.topics(@cluster))
     assert_equal Set[topic1.partition(0), topic2.partition(0), topic2.partition(1)], Set.new(subscription.partitions(@cluster))
 
