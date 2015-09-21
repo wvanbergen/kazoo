@@ -24,7 +24,7 @@ module Kazoo
         cg = kafka_cluster.consumergroup(name)
         raise Kazoo::Error, "Consumergroup #{cg.name} is not registered in Zookeeper" unless cg.exists?
 
-        topics = cg.topics.sort_by(&:name)
+        topics = cg.subscribed_topics.sort_by(&:name)
 
         puts "Consumer name: #{cg.name}"
         puts "Created on: #{cg.created_at}"
@@ -88,6 +88,41 @@ module Kazoo
         raise Kazoo::Error, "Cannot remove consumergroup #{cg.name} because it's still active" if cg.active?
 
         cg.reset_all_offsets
+      end
+
+      desc "clean-topic-claims [NAME]", "Removes all the topic claim Zookeeper nodes that are not needed for the consumer group's subscription"
+      def clean_topic_claims(name)
+        validate_class_options!
+
+        cg = kafka_cluster.consumergroup(name)
+        raise Kazoo::Error, "Consumergroup #{cg.name} is not registered in Zookeeper" unless cg.exists?
+        raise Kazoo::Error, "Cannot cleanup consumergroup #{cg.name} if it is not running" unless cg.active?
+
+        subscribed_topics = cg.subscribed_topics
+        claimed_topics    = cg.claimed_topics
+        to_clean          = claimed_topics - subscribed_topics
+
+        if to_clean.empty?
+          puts "The consumer group does not have any lingering topic claims."
+        else
+          puts "The following topics were once claimed, but are no longer part of #{cg.name}'s subscriptions:"
+          to_clean.each do |topic|
+            puts "- #{topic.name}"
+          end
+
+          cg.clean_topic_claims
+        end
+      end
+
+      desc "clean-stored-offsets [NAME]", "Removes all stored offsets for topics the consumer group is no longer subscribed to"
+      def clean_stored_offsets(name)
+        validate_class_options!
+
+        cg = kafka_cluster.consumergroup(name)
+        raise Kazoo::Error, "Consumergroup #{cg.name} is not registered in Zookeeper" unless cg.exists?
+        raise Kazoo::Error, "Cannot clean offsets for #{cg.name} if it is not running" unless cg.active?
+
+        cg.clean_stored_offsets
       end
     end
   end

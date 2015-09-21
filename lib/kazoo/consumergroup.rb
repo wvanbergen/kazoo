@@ -87,7 +87,7 @@ module Kazoo
       end
     end
 
-    def topics
+    def claimed_topics
       topic_result = cluster.zk.get_children(path: "/consumers/#{name}/owners")
       case topic_result.fetch(:rc)
       when Zookeeper::Constants::ZOK
@@ -98,6 +98,12 @@ module Kazoo
         raise Kazoo::Error, "Failed to get subscribed topics. Result code: #{topic_result.fetch(:rc)}"
       end
     end
+
+    def subscribed_topics
+      subscription.topics(cluster)
+    end
+
+    alias_method :topics, :subscribed_topics
 
     def partitions
       partitions, threads, mutex = [], [], Mutex.new
@@ -253,10 +259,10 @@ module Kazoo
       cluster.send(:recursive_delete, path: "/consumers/#{name}/offsets")
     end
 
-    def cleanup_topics(subscription)
-      subscription = Kazoo::Subscription.build(subscription)
+    def clean_topic_claims(subscription = nil)
+      subscription = subscription.nil? ? self.subscription : Kazoo::Subscription.build(subscription)
 
-      threads = topics.map do |topic|
+      threads = claimed_topics.map do |topic|
         Thread.new do
           Thread.abort_on_exception = true
           unless subscription.topics(cluster).include?(topic)
@@ -268,8 +274,8 @@ module Kazoo
       threads.each(&:join)
     end
 
-    def cleanup_offsets(subscription)
-      subscription = Kazoo::Subscription.build(subscription)
+    def clean_stored_offsets(subscription = nil)
+      subscription = subscription.nil? ? self.subscription : Kazoo::Subscription.build(subscription)
 
       topics_result = cluster.zk.get_children(path: "/consumers/#{name}/offsets")
       raise Kazoo::Error, "Failed to retrieve list of topics. Error code: #{topics_result.fetch(:rc)}" if topics_result.fetch(:rc) != Zookeeper::Constants::ZOK

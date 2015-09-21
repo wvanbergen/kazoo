@@ -79,7 +79,7 @@ class FunctionalConsumergroupTest < Minitest::Test
     instance1.deregister
   end
 
-  def test_cleanup_topics
+  def test_clean_topic_claims
     deleted_topic = @cluster.topic('non_existing')
     deleted_topic.destroy if deleted_topic.exists?
     deleted_topic = @cluster.create_topic('non_existing', partitions: 1, replication_factor: 1)
@@ -89,13 +89,13 @@ class FunctionalConsumergroupTest < Minitest::Test
 
     deleted_topic.destroy
 
-    assert_equal Set[@topic4, deleted_topic], Set.new(@cg.topics)
+    assert_equal Set[@topic4, deleted_topic], Set.new(@cg.claimed_topics)
 
-    @cg.cleanup_topics(Kazoo::Subscription.everything)
-    assert_equal Set[@topic4], Set.new(@cg.topics)
+    @cg.clean_topic_claims(Kazoo::Subscription.everything)
+    assert_equal Set[@topic4], Set.new(@cg.claimed_topics)
 
-    @cg.cleanup_topics(Kazoo::Subscription.build([]))
-    assert_equal [], @cg.topics
+    @cg.clean_topic_claims(Kazoo::Subscription.build([]))
+    assert_equal [], @cg.claimed_topics
   end
 
   def test_retrieve_and_commit_offsets
@@ -161,14 +161,14 @@ class FunctionalConsumergroupTest < Minitest::Test
     }
     assert_equal expected_offsets, @cg.retrieve_all_offsets
 
-    @cg.cleanup_offsets(Kazoo::Subscription.everything)
+    @cg.clean_stored_offsets(Kazoo::Subscription.everything)
 
     expected_offsets = {
       @topic4.partition(0) => 1234 + 1,
     }
     assert_equal expected_offsets, @cg.retrieve_all_offsets
 
-    @cg.cleanup_offsets([])
+    @cg.clean_stored_offsets([])
     assert_equal Hash.new, @cg.retrieve_all_offsets
   end
 end
