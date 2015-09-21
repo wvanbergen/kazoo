@@ -9,10 +9,12 @@ module Kazoo
     def create
       cluster.send(:recursive_create, path: "/consumers/#{name}/ids")
       cluster.send(:recursive_create, path: "/consumers/#{name}/owners")
+      cluster.reset_metadata
     end
 
     def destroy
       cluster.send(:recursive_delete, path: "/consumers/#{name}")
+      cluster.reset_metadata
     end
 
     def exists?
