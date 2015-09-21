@@ -137,7 +137,13 @@ module Kazoo
       when Zookeeper::Constants::ZNONODE
         recursive_create(path: File.dirname(path))
         result = zk.create(path: path)
-        raise Kazoo::Error, "Failed to create node #{path}. Result code: #{result.fetch(:rc)}" unless result.fetch(:rc) == Zookeeper::Constants::ZOK
+
+        case result.fetch(:rc)
+        when Zookeeper::Constants::ZOK, Zookeeper::Constants::ZNODEEXISTS
+          return
+        else
+          raise Kazoo::Error, "Failed to create node #{path}. Result code: #{result.fetch(:rc)}"
+        end
       else
         raise Kazoo::Error, "Failed to create node #{path}. Result code: #{result.fetch(:rc)}"
       end
