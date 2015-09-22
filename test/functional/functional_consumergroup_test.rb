@@ -111,6 +111,20 @@ class FunctionalConsumergroupTest < Minitest::Test
     assert_nil @cg.retrieve_offset(partition)
   end
 
+  def test_commit_offset_race_condition
+    partitions = [
+      Kazoo::Partition.new(@topic1, 0),
+      Kazoo::Partition.new(@topic4, 0),
+      Kazoo::Partition.new(@topic4, 1),
+      Kazoo::Partition.new(@topic4, 2),
+      Kazoo::Partition.new(@topic4, 3)
+    ]
+
+    partitions.map do |partition|
+      Thread.new { @cg.commit_offset(partition, 10) }
+    end.map(&:join)
+  end
+
   def test_retrieve_offsets_and_reset_all_offsets
     partition10 = Kazoo::Partition.new(@topic1, 0)
     partition40 = Kazoo::Partition.new(@topic4, 0)
