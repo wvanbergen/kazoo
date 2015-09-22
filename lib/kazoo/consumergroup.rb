@@ -248,8 +248,8 @@ module Kazoo
 
       result = cluster.zk.set(path: partition_offset_path, data: next_offset_data)
       if result.fetch(:rc) == Zookeeper::Constants::ZNONODE
-        cluster.send(:recursive_create, path: File.dirname(partition_offset_path))
-        result = cluster.zk.create(path: partition_offset_path, data: next_offset_data)
+        cluster.send(:recursive_create, path: partition_offset_path)
+        result = cluster.zk.set(path: partition_offset_path, data: next_offset_data)
       end
 
       if result.fetch(:rc) != Zookeeper::Constants::ZOK
