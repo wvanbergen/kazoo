@@ -125,8 +125,8 @@ module Kazoo
 
     protected
 
-    # Recursively creates a node in Zookeeper, by recusrively trying to create its
-    # parent if it doesn not yet exist.
+    # Recursively creates a node in Zookeeper, by recursively trying to create its
+    # parent if it does not yet exist.
     def recursive_create(path: nil)
       raise ArgumentError, "path is a required argument" if path.nil?
 
@@ -137,7 +137,10 @@ module Kazoo
       when Zookeeper::Constants::ZNONODE
         recursive_create(path: File.dirname(path))
         result = zk.create(path: path)
-        raise Kazoo::Error, "Failed to create node #{path}. Result code: #{result.fetch(:rc)}" unless result.fetch(:rc) == Zookeeper::Constants::ZOK
+        rc = result.fetch(:rc)
+        if rc != Zookeeper::Constants::ZOK && rc != Zookeeper::Constants::ZNODEEXISTS
+          raise Kazoo::Error, "Failed to create node #{path}. Result code: #{rc}"
+        end
       else
         raise Kazoo::Error, "Failed to create node #{path}. Result code: #{result.fetch(:rc)}"
       end
