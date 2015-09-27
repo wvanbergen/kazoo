@@ -231,7 +231,14 @@ module Kazoo
     def self.create(cluster, name, partitions: nil, replication_factor: nil, config: {})
       topic = new(cluster, name, config: config, partitions: [])
       raise Kazoo::Error, "Topic #{name} already exists" if topic.exists?
-      topic.send(:sequentially_assign_partitions, partitions, replication_factor)
+
+      replica_assigner = Kazoo::ReplicaAssigner.new(cluster)
+
+      partitions.times do
+        replicas = replica_assigner.assign(replication_factor)
+        topic.add_partition(replicas: replicas)
+      end
+
       topic.save
       topic
     end
@@ -247,21 +254,6 @@ module Kazoo
         end
       end
       threads.each(&:join)
-    end
-
-    def sequentially_assign_partitions(partition_count, replication_factor, brokers: nil)
-      brokers = cluster.brokers.values if brokers.nil?
-      raise ArgumentError, "replication_factor should be smaller or equal to the number of brokers" if replication_factor > brokers.length
-
-      # Sequentially assign replicas to brokers. There might be a better way.
-      0.upto(partition_count - 1).map do |partition_index|
-        replicas = 0.upto(replication_factor - 1).map do |replica_index|
-          broker_index = (partition_index + replica_index) % brokers.length
-          brokers[broker_index]
-        end
-
-        add_partition(replicas: replicas)
-      end
     end
 
     def partitions_as_json
