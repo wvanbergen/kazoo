@@ -15,6 +15,10 @@ module Kazoo
       replicas.length
     end
 
+    def preferred_leader
+      @replicas.first
+    end
+
     def leader
       @mutex.synchronize do
         refresh_state if @leader.nil?
