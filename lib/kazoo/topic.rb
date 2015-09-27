@@ -1,40 +1,35 @@
 module Kazoo
   class Topic
-    VALID_TOPIC_NAMES = %r{\A[a-zA-Z0-9\\._\\-]+\z}
+    ALL_PRELOAD_METHODS     = [:partitions, :config].freeze
+    DEFAULT_PRELOAD_METHODS = [:partitions].freeze
+    VALID_TOPIC_NAMES       = %r{\A[a-zA-Z0-9\\._\\-]+\z}
     BLACKLISTED_TOPIC_NAMES = %r{\A\.\.?\z}
 
     attr_reader :cluster, :name
-    attr_writer :partitions
 
-    def initialize(cluster, name)
+    def initialize(cluster, name, config: nil, partitions: nil)
       @cluster, @name = cluster, name
-    end
 
-    def self.from_json(cluster, name, json)
-      raise Kazoo::VersionNotSupported unless json.fetch('version') == 1
-
-      topic = new(cluster, name)
-      topic.partitions = json.fetch('partitions').map do |(id, replicas)|
-        topic.partition(id.to_i, replicas: replicas.map { |b| cluster.brokers[b] })
-      end.sort_by(&:id)
-
-      return topic
+      self.partitions = partitions
+      self.config = config
     end
 
     def partitions
-      @partitions ||= begin
-        result = cluster.zk.get(path: "/brokers/topics/#{name}")
-        raise Kazoo::Error, "Failed to get list of partitions for #{name}. Result code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
-
-        partition_json = JSON.parse(result.fetch(:data))
-        partition_json.fetch('partitions').map do |(id, replicas)|
-          partition(id.to_i, replicas: replicas.map { |b| cluster.brokers[b] })
-        end
-      end
+      @partitions ||= load_partitions_from_zookeeper
     end
 
-    def partition(*args)
-      Kazoo::Partition.new(self, *args)
+    def partitions=(ps)
+      @partitions = ps
+    end
+
+    def partition(index, **kwargs)
+      Kazoo::Partition.new(self, index, **kwargs)
+    end
+
+    def add_partition(**kwargs)
+      new_partition = partition(partitions.length, **kwargs)
+      partitions << new_partition
+      new_partition
     end
 
     def replication_factor
@@ -42,7 +37,7 @@ module Kazoo
     end
 
     def under_replicated?
-      partitions.any?(:under_replicated?)
+      partitions.any?(&:under_replicated?)
     end
 
     def inspect
@@ -80,30 +75,15 @@ module Kazoo
       false
     end
 
-    def create
+    def save
       raise Kazoo::Error, "The topic #{name} already exists!" if exists?
       validate
 
-      result = cluster.zk.create(
-        path: "/config/topics/#{name}",
-        data: JSON.generate(version: 1, config: {})
-      )
+      write_config_to_zookeeper
+      write_partitions_to_zookeeper
 
-      if result.fetch(:rc) != Zookeeper::Constants::ZOK
-        raise Kazoo::Error, "Failed to create topic config node for #{name}. Error code: #{result.fetch(:rc)}"
-      end
-
-      result = cluster.zk.create(
-        path: "/brokers/topics/#{name}",
-        data: JSON.generate(version: 1, partitions: partitions_as_json)
-      )
-
-      if result.fetch(:rc) != Zookeeper::Constants::ZOK
-        raise Kazoo::Error, "Failed to create topic #{name}. Error code: #{result.fetch(:rc)}"
-      end
-
-      cluster.reset_metadata
       wait_for_partitions
+      cluster.reset_metadata
     end
 
     def destroy
@@ -142,6 +122,58 @@ module Kazoo
     end
 
     def config
+      @config ||= load_config_from_zookeeper
+    end
+
+    def config=(hash)
+      return if hash.nil?
+      @config = hash.inject({}) { |h, (k, v)| h[k.to_s] = v.to_s; h }
+    end
+
+    def set_config(key, value)
+      config[key.to_s] = value.to_s
+      write_config_to_zookeeper
+    end
+
+    def delete_config(key)
+      config.delete(key.to_s)
+      write_config_to_zookeeper
+    end
+
+    def reset_default_config
+      @config = {}
+      write_config_to_zookeeper
+    end
+
+    def set_partitions_from_json(json_payload)
+      partition_json = JSON.parse(json_payload)
+      raise Kazoo::VersionNotSupported if partition_json.fetch('version') != 1
+
+      @partitions = partition_json.fetch('partitions').map do |(id, replicas)|
+        partition(id.to_i, replicas: replicas.map { |b| cluster.brokers[b] })
+      end
+
+      @partitions.sort_by!(&:id)
+
+      self
+    end
+
+    def set_config_from_json(json_payload)
+      config_json = JSON.parse(json_payload)
+      raise Kazoo::VersionNotSupported if config_json.fetch('version') != 1
+
+      @config = config_json.fetch('config')
+
+      self
+    end
+
+    def load_partitions_from_zookeeper
+      result = cluster.zk.get(path: "/brokers/topics/#{name}")
+      raise Kazoo::Error, "Failed to get list of partitions for #{name}. Result code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
+      set_partitions_from_json(result.fetch(:data)).partitions
+    end
+
+    def load_config_from_zookeeper
       result = cluster.zk.get(path: "/config/topics/#{name}")
       case result.fetch(:rc)
       when Zookeeper::Constants::ZOK
@@ -152,33 +184,30 @@ module Kazoo
         raise Kazoo::Error, "Failed to retrieve topic config"
       end
 
-      config = JSON.parse(result.fetch(:data))
-      raise Kazoo::VersionNotSupported if config.fetch('version') != 1
-
-      config.fetch('config')
+      set_config_from_json(result.fetch(:data)).config
     end
 
-    def set_config(key, value)
-      new_config = config
-      new_config[key.to_s] = value.to_s
-      write_config(new_config)
+    def write_partitions_to_zookeeper
+      path = "/brokers/topics/#{name}"
+      data = JSON.generate(version: 1, partitions: partitions_as_json)
+
+      result = cluster.zk.set(path: path, data: data)
+      case result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        # continue
+      when Zookeeper::Constants::ZNONODE
+        result = cluster.zk.create(path: path, data: data)
+        raise Kazoo::Error, "Failed to write partitions to zookeeper. Result code: #{result.fetch(:rc)}" unless result.fetch(:rc) == Zookeeper::Constants::ZOK
+      else
+        raise Kazoo::Error, "Failed to write partitions to zookeeper. Result code: #{result.fetch(:rc)}"
+      end
+
+      cluster.reset_metadata
     end
 
-    def delete_config(key)
-      new_config = config
-      new_config.delete(key.to_s)
-      write_config(new_config)
-    end
-
-    def reset_default_config
-      write_config({})
-    end
-
-    def write_config(config_hash)
-      raise Kazoo::TopicNotFound, "Topic #{name.inspect} does not exist" unless exists?
-
-      config = config_hash.inject({}) { |h, (k,v)| h[k.to_s] = v.to_s; h }
-      config_json = JSON.generate(version: 1, config: config)
+    def write_config_to_zookeeper
+      config_hash = config.inject({}) { |h, (k,v)| h[k.to_s] = v.to_s; h }
+      config_json = JSON.generate(version: 1, config: config_hash)
 
       # Set topic config
       result = cluster.zk.set(path: "/config/topics/#{name}", data: config_json)
@@ -187,9 +216,9 @@ module Kazoo
         # continue
       when Zookeeper::Constants::ZNONODE
         result = cluster.zk.create(path: "/config/topics/#{name}", data: config_json)
-        raise Kazoo::Error, "Failed to set topic config" unless result.fetch(:rc) == Zookeeper::Constants::ZOK
+        raise Kazoo::Error, "Failed to write topic config to zookeeper. Result code: #{result.fetch(:rc)}" unless result.fetch(:rc) == Zookeeper::Constants::ZOK
       else
-        raise Kazoo::Error, "Failed to set topic config"
+        raise Kazoo::Error, "Failed to write topic config to zookeeper. Result code: #{result.fetch(:rc)}"
       end
 
       # Set config change notification
@@ -199,10 +228,11 @@ module Kazoo
       cluster.reset_metadata
     end
 
-    def self.create(cluster, name, partitions: nil, replication_factor: nil)
-      topic = new(cluster, name)
+    def self.create(cluster, name, partitions: nil, replication_factor: nil, config: {})
+      topic = new(cluster, name, config: config, partitions: [])
+      raise Kazoo::Error, "Topic #{name} already exists" if topic.exists?
       topic.send(:sequentially_assign_partitions, partitions, replication_factor)
-      topic.create
+      topic.save
       topic
     end
 
@@ -224,13 +254,13 @@ module Kazoo
       raise ArgumentError, "replication_factor should be smaller or equal to the number of brokers" if replication_factor > brokers.length
 
       # Sequentially assign replicas to brokers. There might be a better way.
-      @partitions = 0.upto(partition_count - 1).map do |partition_index|
+      0.upto(partition_count - 1).map do |partition_index|
         replicas = 0.upto(replication_factor - 1).map do |replica_index|
           broker_index = (partition_index + replica_index) % brokers.length
           brokers[broker_index]
         end
 
-        self.partition(partition_index, replicas: replicas)
+        add_partition(replicas: replicas)
       end
     end
 

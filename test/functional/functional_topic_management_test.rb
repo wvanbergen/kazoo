@@ -26,9 +26,8 @@ class FunctionalTopicManagementTest < Minitest::Test
   end
 
   def test_topic_config_management
-    topic = @cluster.create_topic('test.kazoo.config', partitions: 1, replication_factor: 1)
+    topic = @cluster.create_topic('test.kazoo.config', partitions: 1, replication_factor: 1, config: { "flush.messages" => 1, "max.message.bytes" => 64000 })
 
-    topic.write_config("flush.messages" => 1, "max.message.bytes" => 64000)
     assert_equal "1", topic.config["flush.messages"]
     assert_equal "64000", topic.config["max.message.bytes"]
 
