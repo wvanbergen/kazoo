@@ -28,7 +28,6 @@ module Kazoo
         kafka_cluster.topics.fetch(name).destroy
       end
 
-      option :topic, type: :string
       desc "partitions TOPIC", "Lists partitions for a topic"
       def partitions(topic)
         validate_class_options!
@@ -37,6 +36,20 @@ module Kazoo
         topic.partitions.each do |partition|
           puts "#{partition.key}\tReplicas: #{partition.replicas.map(&:id).join(",")}\tISR: #{partition.isr.map(&:id).join(",")}"
         end
+      end
+
+      option :partitions, type: :numeric, required: true
+      option :replication_factor, type: :numeric, required: false
+      desc "set_partitions TOPIC", "Lists partitions for a topic"
+      def set_partitions(topic)
+        validate_class_options!
+
+        topic = kafka_cluster.topics.fetch(topic)
+        new_partitions = options[:partitions] - topic.partitions.length
+        raise "You can only add partitions to a topic, not remove them" if new_partitions <= 0
+
+        replication_factor = options[:replication_factor] || topic.replication_factor
+        topic.add_partitions(partitions: new_partitions, replication_factor: replication_factor)
       end
     end
   end

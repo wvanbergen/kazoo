@@ -26,7 +26,7 @@ module Kazoo
       Kazoo::Partition.new(self, index, **kwargs)
     end
 
-    def add_partition(**kwargs)
+    def append_partition(**kwargs)
       new_partition = partition(partitions.length, **kwargs)
       partitions << new_partition
       new_partition
@@ -73,6 +73,25 @@ module Kazoo
       validate
     rescue Kazoo::ValidationError
       false
+    end
+
+    def add_partitions(partitions: nil, replication_factor: nil)
+      raise ArgumentError, "partitions must be a positive integer" if Integer(partitions) <= 0
+      raise ArgumentError, "replication_factor must be a positive integer" if Integer(replication_factor) <= 0
+
+      raise Kazoo::TopicNotFound, "The topic #{name} does not exists!" unless exists?
+
+      replica_assigner = Kazoo::ReplicaAssigner.new(cluster)
+
+      partitions.times do
+        replicas = replica_assigner.assign(replication_factor)
+        append_partition(replicas: replicas)
+      end
+
+      validate
+      write_partitions_to_zookeeper
+      wait_for_partitions
+      cluster.reset_metadata
     end
 
     def save
@@ -236,7 +255,7 @@ module Kazoo
 
       partitions.times do
         replicas = replica_assigner.assign(replication_factor)
-        topic.add_partition(replicas: replicas)
+        topic.append_partition(replicas: replicas)
       end
 
       topic.save
