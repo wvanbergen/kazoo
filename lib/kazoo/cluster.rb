@@ -4,7 +4,6 @@ module Kazoo
   # It allows you the inspect the brokers of the cluster, the topics and partition metadata,
   # and the consumergroups that are registered against the cluster.
   class Cluster
-
     attr_reader :zookeeper
 
     def initialize(zookeeper)
@@ -63,25 +62,12 @@ module Kazoo
     end
 
     # Returns a hash of all the topics in the Kafka cluster, indexed by the topic name.
-    def topics
+    def topics(preload: Kazoo::Topic::DEFAULT_PRELOAD_METHODS)
       @topics_mutex.synchronize do
         @topics ||= begin
           topics = zk.get_children(path: "/brokers/topics")
           raise Kazoo::Error, "Failed to list topics. Error code: #{topics.fetch(:rc)}" unless topics.fetch(:rc) == Zookeeper::Constants::ZOK
-
-          result, mutex = {}, Mutex.new
-          threads = topics.fetch(:children).map do |name|
-            Thread.new do
-              Thread.abort_on_exception = true
-              topic_info = zk.get(path: "/brokers/topics/#{name}")
-              raise Kazoo::Error, "Failed to get topic info. Error code: #{topic_info.fetch(:rc)}" unless topic_info.fetch(:rc) == Zookeeper::Constants::ZOK
-
-              topic = Kazoo::Topic.from_json(self, name, JSON.parse(topic_info.fetch(:data)))
-              mutex.synchronize { result[name] = topic }
-            end
-          end
-          threads.each(&:join)
-          result
+          preload_topics_from_names(topics.fetch(:children), preload: preload)
         end
       end
     end
@@ -91,13 +77,13 @@ module Kazoo
       Kazoo::Topic.new(self, name)
     end
 
-    # Creates a topic on the Kafka cluster, with the provided number of partitions and replication
-    # factor.
-    def create_topic(name, partitions: nil, replication_factor: nil)
+    # Creates a topic on the Kafka cluster, with the provided number of partitions and
+    # replication factor.
+    def create_topic(name, partitions: nil, replication_factor: nil, config: nil)
       raise ArgumentError, "partitions must be a positive integer" if Integer(partitions) <= 0
       raise ArgumentError, "replication_factor must be a positive integer" if Integer(replication_factor) <= 0
 
-      Kazoo::Topic.create(self, name, partitions: Integer(partitions), replication_factor: Integer(replication_factor))
+      Kazoo::Topic.create(self, name, partitions: Integer(partitions), replication_factor: Integer(replication_factor), config: config)
     end
 
     # Returns a list of all partitions hosted by the cluster
@@ -166,6 +152,22 @@ module Kazoo
 
       result = zk.delete(path: path)
       raise Kazoo::Error, "Failed to delete node #{path}. Result code: #{result.fetch(:rc)}" if result.fetch(:rc) != Zookeeper::Constants::ZOK
+    end
+
+    private
+
+    def preload_topics_from_names(names, preload: Kazoo::Topic::DEFAULT_PRELOAD_METHODS)
+      result, mutex = {}, Mutex.new
+      threads = names.map do |name|
+        Thread.new do
+          Thread.abort_on_exception = true
+          topic = topic(name)
+          (preload & Kazoo::Topic::ALL_PRELOAD_METHODS).each { |method| topic.send(method) }
+          mutex.synchronize { result[name] = topic }
+        end
+      end
+      threads.each(&:join)
+      result
     end
   end
 end

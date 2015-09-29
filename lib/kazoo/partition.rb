@@ -15,6 +15,10 @@ module Kazoo
       replicas.length
     end
 
+    def preferred_leader
+      @replicas.first
+    end
+
     def leader
       @mutex.synchronize do
         refresh_state if @leader.nil?
@@ -80,13 +84,14 @@ module Kazoo
     protected
 
     def refresh_state
-      state_json = cluster.zk.get(path: "/brokers/topics/#{topic.name}/partitions/#{id}/state")
-      raise Kazoo::Error, "Failed to get partition state. Error code: #{state_json.fetch(:rc)}" unless state_json.fetch(:rc) == Zookeeper::Constants::ZOK
+      state_result = cluster.zk.get(path: "/brokers/topics/#{topic.name}/partitions/#{id}/state")
+      raise Kazoo::Error, "Failed to get partition state. Error code: #{state_result.fetch(:rc)}" unless state_result.fetch(:rc) == Zookeeper::Constants::ZOK
 
-      set_state(JSON.parse(state_json.fetch(:data)))
+      set_state_from_json(state_result.fetch(:data))
     end
 
-    def set_state(json)
+    def set_state_from_json(json_payload)
+      json = JSON.parse(json_payload)
       raise Kazoo::VersionNotSupported unless json.fetch('version') == 1
 
       @leader = cluster.brokers.fetch(json.fetch('leader'))

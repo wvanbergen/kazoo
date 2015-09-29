@@ -25,10 +25,28 @@ class FunctionalTopicManagementTest < Minitest::Test
     refute @cluster.topics.key?(topic.name)
   end
 
-  def test_topic_config_management
-    topic = @cluster.create_topic('test.kazoo.config', partitions: 1, replication_factor: 1)
+  def test_adding_partitions_to_topic
+    topic = @cluster.create_topic('test.kazoo', partitions: 2, replication_factor: 1)
 
-    topic.write_config("flush.messages" => 1, "max.message.bytes" => 64000)
+    topic.add_partitions(partitions: 2, replication_factor: 1)
+
+    assert topic.partitions.all? { |partition| @cluster.brokers.values.include?(partition.leader) }
+    assert_equal 4, topic.partitions.length
+
+    @cluster.reset_metadata
+
+    assert topic.partitions.all? { |partition| @cluster.brokers.values.include?(partition.leader) }
+    assert_equal 4, topic.partitions.length
+
+    topic.destroy
+
+    refute topic.exists?
+    refute @cluster.topics.key?(topic.name)
+  end
+
+  def test_topic_config_management
+    topic = @cluster.create_topic('test.kazoo.config', partitions: 1, replication_factor: 1, config: { "flush.messages" => 1, "max.message.bytes" => 64000 })
+
     assert_equal "1", topic.config["flush.messages"]
     assert_equal "64000", topic.config["max.message.bytes"]
 
