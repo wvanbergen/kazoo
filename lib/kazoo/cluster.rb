@@ -72,6 +72,18 @@ module Kazoo
       end
     end
 
+    def watch_topics(preload: Kazoo::Topic::DEFAULT_PRELOAD_METHODS, cv: nil, timeout: nil, &block)
+      Kazoo.wait_for_watch(cv: cv, timeout: timeout) do |cb|
+        topic_result = zk.get_children(path: "/brokers/topics", watcher: cb)
+        raise Kazoo::Error, "Failed to list topics. Error code: #{topic_result.fetch(:rc)}" unless topic_result.fetch(:rc) == Zookeeper::Constants::ZOK
+
+        topics = preload_topics_from_names(topic_result.fetch(:children), preload: preload)
+        yield(topics) if block_given?
+      end
+    ensure
+      @topics = nil
+    end
+
     # Returns a Kazoo::Topic for a given topic name.
     def topic(name)
       Kazoo::Topic.new(self, name)

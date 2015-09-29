@@ -23,6 +23,19 @@ module Kazoo
   def self.connect(zookeeper)
     Kazoo::Cluster.new(zookeeper)
   end
+
+
+  def self.wait_for_watch(cv: nil, timeout: nil, &block)
+    m, cv, result = Mutex.new, cv || ConditionVariable.new, false
+    cb = Zookeeper::Callbacks::WatcherCallback.create { result = true; cv.broadcast }
+
+    m.synchronize do
+      yield(cb)
+      cv.wait(m, timeout) unless cb.completed?
+    end
+
+    return result
+  end
 end
 
 require 'kazoo/cluster'

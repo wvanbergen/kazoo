@@ -5,6 +5,15 @@ require 'minitest/autorun'
 require 'mocha/mini_test'
 require 'pp'
 
+module CleanTopicSlate
+  def ensure_topics_do_not_exist(*topic_names)
+    topic_names.each do |topic_name|
+      topic = @cluster.topic(topic_name)
+      topic.destroy if topic.exists?
+    end
+  end
+end
+
 module MockCluster
   def mock_cluster
     cluster = Kazoo::Cluster.new('example.com:2181')
