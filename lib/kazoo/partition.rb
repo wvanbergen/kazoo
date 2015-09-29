@@ -94,7 +94,8 @@ module Kazoo
       json = JSON.parse(json_payload)
       raise Kazoo::VersionNotSupported unless json.fetch('version') == 1
 
-      @leader = cluster.brokers.fetch(json.fetch('leader'))
+      leader_index = json.fetch('leader')
+      @leader = leader_index >= 0 ? cluster.brokers.fetch(leader_index) : nil
       @isr = json.fetch('isr').map { |r| cluster.brokers.fetch(r) }
     end
   end
