@@ -1,6 +1,6 @@
 module Kazoo
   # Helper class to assign replicas to brokers for new partitions.
-  # It tries to e=venly divide the number of leaders and replicas over the brokers,
+  # It tries to evenly divide the number of leaders and replicas over the brokers,
   # in order to get a comparable load on all the brokers in the cluster.
   class ReplicaAssigner
     attr_reader :cluster
