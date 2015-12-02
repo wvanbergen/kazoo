@@ -44,11 +44,24 @@ class ReplicaReassignerTest < Minitest::Test
   def test_steps_for_full_reassignment
     steps = Kazoo::ReplicaReassigner.steps([1,2,3], [4,5,6], max_agony: 1, include_initial: true)
 
+    assert steps.length <= 4 # 2 intermediate steps maximum
     assert_equal [1,2,3], steps.first
     assert_equal [4,5,6], steps.last
 
     steps.each_cons(2) do |from, to|
       assert Kazoo::ReplicaReassigner.safe_reassignment?(from, to, max_agony: 1, minimum_replicas: 3)
+    end
+  end
+
+  def test_steps_for_full_reassignment_with_more_agony
+    steps = Kazoo::ReplicaReassigner.steps([1,2,3], [4,5,6], max_agony: 2, include_initial: true)
+
+    assert steps.length <= 3 # 1 intermediate steps maximum
+    assert_equal [1,2,3], steps.first
+    assert_equal [4,5,6], steps.last
+
+    steps.each_cons(2) do |from, to|
+      assert Kazoo::ReplicaReassigner.safe_reassignment?(from, to, max_agony: 2, minimum_replicas: 3)
     end
   end
 
