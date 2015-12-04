@@ -23,6 +23,13 @@ module Kazoo
           $stdout.puts "Broker #{broker_name} is non-critical and can be stopped safely."
         end
       end
+
+      desc "election", "Triggers a preferred leader election"
+      def election
+        validate_class_options!
+
+        kafka_cluster.preferred_leader_election
+      end
     end
   end
 end
