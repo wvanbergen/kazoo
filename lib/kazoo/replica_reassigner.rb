@@ -13,7 +13,7 @@ module Kazoo
     end
 
     def self.valid_replicaset?(replicas, minimum_replicas: 1)
-      replicas == replicas.uniq && replicas.length >= minimum_replicas
+      replicas == replicas.compact.uniq && replicas.length >= minimum_replicas
     end
 
     def self.safe_reassignment?(from, to, max_agony: 1, minimum_replicas: 1)

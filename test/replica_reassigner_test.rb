@@ -27,6 +27,8 @@ class ReplicaReassignerTest < Minitest::Test
     assert Kazoo::ReplicaReassigner.valid_replicaset?([1,2,3], minimum_replicas: 3)
 
     refute Kazoo::ReplicaReassigner.valid_replicaset?([])
+    refute Kazoo::ReplicaReassigner.valid_replicaset?([nil])
+    refute Kazoo::ReplicaReassigner.valid_replicaset?([1, nil])
     refute Kazoo::ReplicaReassigner.valid_replicaset?([1,1])
     refute Kazoo::ReplicaReassigner.valid_replicaset?([1,2,3], minimum_replicas: 4)
   end
