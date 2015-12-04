@@ -81,6 +81,10 @@ module Kazoo
       end
     end
 
+    def to_json(generator)
+      generator.generate(topic: topic.name, partition: id)
+    end
+
     protected
 
     def refresh_state

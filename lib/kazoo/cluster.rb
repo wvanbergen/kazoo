@@ -102,6 +102,21 @@ module Kazoo
       partitions.any?(&:under_replicated?)
     end
 
+    # Triggers a preferred leader elections for the provided list of partitions. If no list of
+    # partitions is provided, the preferred leader will be elected for all partitions in the cluster.
+    def preferred_leader_election(partitions: nil)
+      partitions = self.partitions if partitions.nil?
+      result = zk.create(path: "/admin/preferred_replica_election", data: JSON.generate(version: 1, partitions: partitions))
+      case result.fetch(:rc)
+      when Zookeeper::Constants::ZOK
+        return true
+      when Zookeeper::Constants::ZNODEEXISTS
+        raise Kazoo::Error, "Another preferred leader election is still in progress"
+      else
+        raise Kazoo::Error, "Failed to start preferred leadership election. Result code: #{result.fetch(:rc)}"
+      end
+    end
+
     # Closes the zookeeper connection and clears all the local caches.
     def close
       zk.close
