@@ -318,7 +318,7 @@ module Kazoo
           Thread.abort_on_exception = true
 
           subscription_result = cluster.zk.get(path: "/consumers/#{name}/ids/#{id}")
-          raise Kazoo::Error, "Failed to retrieve subscription for instance. Error code: #{result.fetch(:rc)}" if subscription_result.fetch(:rc) != Zookeeper::Constants::ZOK
+          raise Kazoo::Error, "Failed to retrieve subscription for instance. Error code: #{subscription_result.fetch(:rc)}" if subscription_result.fetch(:rc) != Zookeeper::Constants::ZOK
           subscription = Kazoo::Subscription.from_json(subscription_result.fetch(:data))
           mutex.synchronize { instances << Instance.new(self, id: id, subscription: subscription) }
         end
