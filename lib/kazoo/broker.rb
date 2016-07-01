@@ -79,10 +79,10 @@ module Kazoo
 
     # Instantiates a Kazoo::Broker instance based on the Broker metadata that is stored
     # in Zookeeper under `/brokers/<id>`.
-    # TODO: add support for endpoints in Kafka 0.9
+    # TODO: add support for endpoints in Kafka 0.9+
     def self.from_json(cluster, id, json)
       case json.fetch('version')
-      when 1, 2
+      when 1, 2, 3
         new(cluster, id.to_i, json.fetch('host'), json.fetch('port'), jmx_port: json.fetch('jmx_port', nil))
       else
         raise Kazoo::VersionNotSupported
