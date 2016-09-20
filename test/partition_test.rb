@@ -18,6 +18,7 @@ class PartitionTest < Minitest::Test
 
     json_payload = '{"controller_epoch":157,"leader":1,"version":1,"leader_epoch":8,"isr":[3,2,1]}'
     @cluster.zk.expects(:get).with(path: "/brokers/topics/test.1/partitions/0/state").returns(data: json_payload, rc: 0)
+    @cluster.zk.expects(:get).with(path: "/brokers/topics/test.1/partitions/0/state").returns(data: json_payload, rc: 0)
 
     assert_equal 1, partition.leader.id
     assert_equal [3,2,1], partition.isr.map(&:id)
