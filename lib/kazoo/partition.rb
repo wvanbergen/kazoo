@@ -21,14 +21,14 @@ module Kazoo
 
     def leader
       @mutex.synchronize do
-        refresh_state if @leader.nil?
+        refresh_state
         @leader
       end
     end
 
     def isr
       @mutex.synchronize do
-        refresh_state if @isr.nil?
+        refresh_state
         @isr
       end
     end
