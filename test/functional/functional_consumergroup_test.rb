@@ -67,13 +67,10 @@ class FunctionalConsumergroupTest < Minitest::Test
     instance1 = @cg.instantiate(subscription: @topic1).register
     instance2 = @cg.instantiate(subscription: @topic1).register
 
-    t = Thread.current
-    instances, cb = @cg.watch_instances { t.run if t.status == 'sleep' }
-    assert_equal Set[instance1, instance2], Set.new(instances)
-
-    Thread.new { instance2.deregister }
-
-    Thread.stop unless cb.completed?
+    @cg.watch_instances do |instances|
+      assert_equal Set[instance1, instance2], Set.new(instances)
+      Thread.new { instance2.deregister }
+    end
 
     assert assert_equal Set[instance1], Set.new(@cg.instances)
     instance1.deregister

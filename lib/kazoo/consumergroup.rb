@@ -59,19 +59,20 @@ module Kazoo
       end
     end
 
-    def watch_instances(&block)
-      cb = Zookeeper::Callbacks::WatcherCallback.create(&block)
-      result = cluster.zk.get_children(path: "/consumers/#{name}/ids", watcher: cb)
-      instances = case result.fetch(:rc)
-      when Zookeeper::Constants::ZOK
-        instances_with_subscription(result.fetch(:children))
-      when Zookeeper::Constants::ZNONODE
-        []
-      else
-        raise Kazoo::Error, "Failed getting a list of runniong instances for #{name}. Error code: #{result.fetch(:rc)}"
-      end
+    def watch_instances(timeout: nil, cv: nil, &block)
+      Kazoo.wait_for_watch(timeout: timeout, cv: cv) do |cb|
+        result = cluster.zk.get_children(path: "/consumers/#{name}/ids", watcher: cb)
+        instances = case result.fetch(:rc)
+        when Zookeeper::Constants::ZOK
+          instances_with_subscription(result.fetch(:children))
+        when Zookeeper::Constants::ZNONODE
+          []
+        else
+          raise Kazoo::Error, "Failed getting a list of runniong instances for #{name}. Error code: #{result.fetch(:rc)}"
+        end
 
-      [instances, cb]
+        yield(instances) if block_given?
+      end
     end
 
     def watch_partition_claim(partition, &block)

@@ -94,6 +94,18 @@ module Kazoo
       cluster.reset_metadata
     end
 
+    def watch_partitions(cv: nil, timeout: nil, &block)
+      Kazoo.wait_for_watch(cv: cv, timeout: timeout) do |cb|
+        partitions_result = cluster.zk.get(path: "/brokers/topics/#{name}", watcher: cb)
+        raise Kazoo::Error, "Failed to retrieve partitions. Result code: #{partitions_result.fetch(:rc)}" if partitions_result.fetch(:rc) != Zookeeper::Constants::ZOK
+
+        set_partitions_from_json(partitions_result.fetch(:data))
+        yield(self.partitions) if block_given?
+      end
+    ensure
+      @partitions = nil
+    end
+
     def save
       raise Kazoo::Error, "The topic #{name} already exists!" if exists?
       validate
