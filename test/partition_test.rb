@@ -44,4 +44,15 @@ class PartitionTest < Minitest::Test
     refute partition.valid?
     assert_raises(Kazoo::ValidationError) { partition.validate }
   end
+
+  def test_raises_unknown_broker
+    partition = @cluster.topics['test.1'].partitions[0]
+    partition.unstub(:leader)
+    partition.unstub(:isr)
+
+    json_payload = '{"controller_epoch":157,"leader":1,"version":1,"leader_epoch":8,"isr":[4,2,1]}'
+    @cluster.zk.expects(:get).with(path: "/brokers/topics/test.1/partitions/0/state").returns(data: json_payload, rc: 0)
+
+    assert_raises(Kazoo::Error) { partition.under_replicated? }
+  end
 end

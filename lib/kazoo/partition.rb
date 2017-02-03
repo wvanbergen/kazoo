@@ -99,7 +99,13 @@ module Kazoo
       raise Kazoo::VersionNotSupported unless json.fetch('version') == 1
 
       @leader = cluster.brokers.fetch(json.fetch('leader'))
-      @isr = json.fetch('isr').map { |r| cluster.brokers.fetch(r) }
+      @isr = json.fetch('isr').map do |r|
+        begin
+          cluster.brokers.fetch(r)
+        rescue KeyError
+          raise Kazoo::Error, "Broker #{r} not in cluster but in ISR list #{json.fetch('isr').inspect}?!"
+        end
+      end
     end
   end
 end
