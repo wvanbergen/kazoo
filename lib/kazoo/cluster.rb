@@ -18,7 +18,7 @@ module Kazoo
 
       @root = '/brokers/ids'
       children = zk.get_children(path: @root, watcher: children_watch)
-      children.fetch(:children).each do |child|
+      children.fetch(:children).map(&:to_i).each do |child|
         data = zk.get(path: "#{@root}/#{child}", watcher: data_watch(child))
         @brokers[child] = Kazoo::Broker.from_json(self, child, JSON.parse(data.fetch(:data)))
       end
@@ -187,7 +187,7 @@ module Kazoo
         end
 
         added_children = new_children.fetch(:children) - @brokers.keys
-        added_children.each do |child|
+        added_children.map(&:to_i).each do |child|
           data = zk.get(path: "#{@root}/#{child}", watcher: data_watch(child))
           @brokers[child] = Kazoo::Broker.from_json(self, child, JSON.parse(data.fetch(:data)))
         end
