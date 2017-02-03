@@ -34,7 +34,9 @@ module Kazoo
 
     # Returns a hash of all the brokers in the cluster
     def brokers
-      @brokers
+      @brokers_mutex.synchronize do
+        @brokers
+      end
     end
 
     # Returns a list of consumer groups that are registered against the Kafka cluster.
@@ -179,31 +181,33 @@ module Kazoo
 
     def children_watch
       Zookeeper::Callbacks::WatcherCallback.create do |cb|
-        new_children = zk.get_children(path: cb.path, watcher: children_watch)
+        @brokers_mutex.synchronize do
+          new_children = zk.get_children(path: cb.path, watcher: children_watch)
 
-        removed_children = @brokers.keys - new_children.fetch(:children)
-        removed_children.each do |child|
-         @brokers.delete(child)
-        end
+          removed_children = @brokers.keys - new_children.fetch(:children).map(&:to_i)
+          removed_children.each do |child|
+            @brokers.delete(child)
+          end
 
-        added_children = new_children.fetch(:children) - @brokers.keys
-        added_children.map(&:to_i).each do |child|
-          data = zk.get(path: "#{@root}/#{child}", watcher: data_watch(child))
-          @brokers[child] = Kazoo::Broker.from_json(self, child, JSON.parse(data.fetch(:data)))
+          added_children = new_children.fetch(:children).map(&:to_i) - @brokers.keys
+          added_children.map(&:to_i).each do |child|
+            data = zk.get(path: "#{@root}/#{child}", watcher: data_watch(child))
+            @brokers[child] = Kazoo::Broker.from_json(self, child, JSON.parse(data.fetch(:data)))
+          end
         end
-        p @brokers.keys
       end
     end
 
     def data_watch(child)
       Zookeeper::Callbacks::WatcherCallback.create do |cb|
-        data = zk.get(path: cb.path, watcher: data_watch(child))
-        if data['exists']
-          @brokers[child] = Kazoo::Broker.from_json(self, child, JSON.parse(data.fetch(:data)))
-        else
-          @brokers.delete(child)
+        @brokers_mutex.synchronize do
+          if cb.type == Zookeeper::Constants::ZOO_DELETED_EVENT
+            @brokers.delete(child)
+          else
+            data = zk.get(path: cb.path, watcher: data_watch(child))
+            @brokers[child] = Kazoo::Broker.from_json(self, child, JSON.parse(data.fetch(:data)))
+          end
         end
-        p @brokers.keys
       end
     end
   end
