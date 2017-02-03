@@ -17,11 +17,7 @@ module Kazoo
       # TODO: Handle case where /brokers/ids does not exist
 
       @root = '/brokers/ids'
-      children = zk.get_children(path: @root, watcher: children_watch)
-      children.fetch(:children).map(&:to_i).each do |child|
-        data = zk.get(path: "#{@root}/#{child}", watcher: data_watch(child))
-        @brokers[child] = Kazoo::Broker.from_json(self, child, JSON.parse(data.fetch(:data)))
-      end
+      children_watch.call(path: @root)
     end
 
     # TODO: Handle chroots?
