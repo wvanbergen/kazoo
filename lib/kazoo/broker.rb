@@ -82,7 +82,7 @@ module Kazoo
     # TODO: add support for endpoints in Kafka 0.9+
     def self.from_json(cluster, id, json)
       case json.fetch('version')
-      when 1, 2, 3
+      when 1, 2, 3, 4
         new(cluster, id.to_i, json.fetch('host'), json.fetch('port'), jmx_port: json.fetch('jmx_port', nil))
       else
         raise Kazoo::VersionNotSupported
