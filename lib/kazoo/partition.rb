@@ -98,7 +98,12 @@ module Kazoo
       json = JSON.parse(json_payload)
       raise Kazoo::VersionNotSupported unless json.fetch('version') == 1
 
-      @leader = cluster.brokers.fetch(json.fetch('leader'))
+      begin
+        @leader = cluster.brokers.fetch(json.fetch('leader'))
+      rescue KeyError
+        raise Kazoo::Error, "Topic #{topic.name}:#{id} has unknown leader! Brokers: '#{cluster.brokers.keys.join(',')}'; 'Payload: '#{json_payload.inspect}'"
+      end
+
       @isr = json.fetch('isr').map do |r|
         begin
           cluster.brokers.fetch(r)
