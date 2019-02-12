@@ -16,7 +16,7 @@ module Kazoo
     end
 
     def preferred_leader
-      @replicas.first
+      @replicas.compact.first
     end
 
     def leader
