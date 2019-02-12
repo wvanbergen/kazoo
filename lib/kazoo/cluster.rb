@@ -1,3 +1,6 @@
+# vim: ai ts=2 sts=2 et sw=2 ft=ruby
+# vim: autoindent tabstop=2 shiftwidth=2 expandtab softtabstop=2 filetype=ruby
+
 module Kazoo
 
   # Kazoo::Cluster represents a full Kafka cluster, based on how it is registered in Zookeeper.
@@ -9,8 +12,15 @@ module Kazoo
     def initialize(zookeeper)
       @zookeeper = zookeeper
       @zk_mutex, @brokers_mutex, @topics_mutex = Mutex.new, Mutex.new, Mutex.new
+      @brokers = {}
+
+      # TODO: Handle case where /brokers/ids does not exist
+
+      @root = '/brokers/ids'
+      children_watch.call(path: @root)
     end
 
+    # TODO: Handle chroots?
     # Returns a zookeeper connection
     def zk
       @zk_mutex.synchronize do
@@ -18,30 +28,10 @@ module Kazoo
       end
     end
 
-    # Returns a hash of all the brokers in the
+    # Returns a hash of all the brokers in the cluster
     def brokers
       @brokers_mutex.synchronize do
-        @brokers ||= begin
-          brokers = zk.get_children(path: "/brokers/ids")
-
-          if brokers.fetch(:rc) != Zookeeper::Constants::ZOK
-            raise NoClusterRegistered, "No Kafka cluster registered on this Zookeeper location."
-          end
-
-          result, mutex = {}, Mutex.new
-          threads = brokers.fetch(:children).map do |id|
-            Thread.new do
-              Thread.abort_on_exception = true
-              broker_info = zk.get(path: "/brokers/ids/#{id}")
-              raise Kazoo::Error, "Failed to retrieve broker info. Error code: #{broker_info.fetch(:rc)}" unless broker_info.fetch(:rc) == Zookeeper::Constants::ZOK
-
-              broker = Kazoo::Broker.from_json(self, id, JSON.parse(broker_info.fetch(:data)))
-              mutex.synchronize { result[id.to_i] = broker }
-            end
-          end
-          threads.each(&:join)
-          result
-        end
+        @brokers
       end
     end
 
@@ -94,7 +84,7 @@ module Kazoo
     # Resets the locally cached list of brokers and topics, which will mean they will be fetched
     # freshly from Zookeeper the next time they are requested.
     def reset_metadata
-      @topics, @brokers, @consumergroups = nil, nil, nil
+      @topics, @consumergroups = nil, nil
     end
 
     # Returns true if any of the partitions hosted by the cluster
@@ -183,6 +173,38 @@ module Kazoo
       end
       threads.each(&:join)
       result
+    end
+
+    def children_watch
+      Zookeeper::Callbacks::WatcherCallback.create do |cb|
+        @brokers_mutex.synchronize do
+          new_children = zk.get_children(path: cb.path, watcher: children_watch)
+
+          removed_children = @brokers.keys - new_children.fetch(:children).map(&:to_i)
+          removed_children.each do |child|
+            @brokers.delete(child)
+          end
+
+          added_children = new_children.fetch(:children).map(&:to_i) - @brokers.keys
+          added_children.map(&:to_i).each do |child|
+            data = zk.get(path: "#{@root}/#{child}", watcher: data_watch(child))
+            @brokers[child] = Kazoo::Broker.from_json(self, child, JSON.parse(data.fetch(:data)))
+          end
+        end
+      end
+    end
+
+    def data_watch(child)
+      Zookeeper::Callbacks::WatcherCallback.create do |cb|
+        @brokers_mutex.synchronize do
+          if cb.type == Zookeeper::Constants::ZOO_DELETED_EVENT
+            @brokers.delete(child)
+          else
+            data = zk.get(path: cb.path, watcher: data_watch(child))
+            @brokers[child] = Kazoo::Broker.from_json(self, child, JSON.parse(data.fetch(:data)))
+          end
+        end
+      end
     end
   end
 end
